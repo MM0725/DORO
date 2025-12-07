@@ -43,8 +43,9 @@ let startTime;
 let clearTime = null;
 let gameCleared = false;
 
-// ゲーム状態
-let gameStarted = false;
+// 画面状態
+// start:スタート画面 / instructions:プレイ方法 / game:ゲーム中
+let screenState = "start";
 
 // 描画用
 let lanes = [];
@@ -58,7 +59,7 @@ let targetImg;
 function setup(){
   createCanvas(900, 600);
   noCursor();
-  targetImg = loadImage("images/doro-removebg-preview.png"); 
+  targetImg = loadImage("images/doro-removebg-preview.png");
 }
 
 // =======================
@@ -67,11 +68,55 @@ function setup(){
 function draw(){
   background(36,42,64);
 
-  if(!gameStarted){
+  if(screenState === "start"){
     drawStartScreen();
-    return;
+  } else if(screenState === "instructions"){
+    drawInstructionsScreen();
+  } else if(screenState === "game"){
+    drawGame();
   }
+}
 
+// ==================== スタート画面 ====================
+function drawStartScreen(){
+  push();
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(48);
+  text("DOROゲーム", width/2, height/2 - 80);
+
+  rectMode(CENTER);
+  // スタートボタン
+  fill(50,150,255);
+  rect(width/2, height/2, 180, 50, 10);
+  fill(255);
+  textSize(24);
+  text("スタート", width/2, height/2);
+
+  // プレイ方法ボタン
+  fill(50,200,100);
+  rect(width/2, height/2 + 80, 180, 50, 10);
+  fill(255);
+  text("プレイ方法", width/2, height/2 + 80);
+  pop();
+}
+
+// ==================== プレイ方法画面 ====================
+function drawInstructionsScreen(){
+  push();
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(36);
+  text("プレイ方法", width/2, height/2 - 60);
+  textSize(24);
+  text("DOROを素早く倒したら勝ち！", width/2, height/2 + 20);
+  textSize(18);
+  text("クリックで戻る", width/2, height/2 + 80);
+  pop();
+}
+
+// ==================== ゲーム画面 ====================
+function drawGame(){
   drawTable();
   updateTargets();
   drawTargets();
@@ -85,18 +130,6 @@ function draw(){
     clearTime = (millis() - startTime)/1000;
     gameCleared = true;
   }
-}
-
-// ==================== Start Screen ====================
-function drawStartScreen(){
-  push();
-  fill(255);
-  textAlign(CENTER, CENTER);
-  textSize(48);
-  text("DOROゲーム", width/2, height/2 - 40);
-  textSize(24);
-  text("クリックでスタート", width/2, height/2 + 40);
-  pop();
 }
 
 // ==================== Scene initialization ====================
@@ -194,7 +227,7 @@ function drawTargets(){
 
     push();
     translate(t.x, t.currentY);
-    if(t.vx > 0) scale(-1,1);
+    if(t.vx > 0) scale(-1,1); // 右方向なら反転
     image(targetImg, 0, 0, t.size, t.size);
     pop();
   }
@@ -320,12 +353,27 @@ function drawTable(){
   );
 }
 
-// ==================== Start click ====================
+// ==================== Mouse pressed ====================
 function mousePressed(){
-  if(!gameStarted){
-    gameStarted = true;
-    initScene();
-    return;
+  if(screenState === "start"){
+    // スタートボタン
+    if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
+       mouseY > height/2 - 25 && mouseY < height/2 + 25){
+      screenState = "game";
+      gameStarted = true;
+      initScene();
+      return;
+    }
+    // プレイ方法ボタン
+    if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
+       mouseY > height/2 + 55 && mouseY < height/2 + 105){
+      screenState = "instructions";
+      return;
+    }
+  } else if(screenState === "instructions"){
+    screenState = "start";
+  } else if(screenState === "game"){
+    handleShooting();
   }
 }
 </script>
