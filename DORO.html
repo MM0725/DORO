@@ -58,7 +58,6 @@ let targetImg;
 // =======================
 function setup(){
   createCanvas(900, 600);
-  noCursor();
   targetImg = loadImage("images/doro-removebg-preview.png");
 }
 
@@ -70,9 +69,12 @@ function draw(){
 
   if(screenState === "start"){
     drawStartScreen();
+    cursor(); // カーソル表示
   } else if(screenState === "instructions"){
     drawInstructionsScreen();
+    cursor(); // カーソル表示
   } else if(screenState === "game"){
+    noCursor(); // ゲーム中だけ非表示
     drawGame();
   }
 }
@@ -356,7 +358,6 @@ function drawTable(){
 // ==================== Mouse pressed ====================
 function mousePressed(){
   if(screenState === "start"){
-    // スタートボタン
     if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
        mouseY > height/2 - 25 && mouseY < height/2 + 25){
       screenState = "game";
@@ -364,7 +365,6 @@ function mousePressed(){
       initScene();
       return;
     }
-    // プレイ方法ボタン
     if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
        mouseY > height/2 + 55 && mouseY < height/2 + 105){
       screenState = "instructions";
