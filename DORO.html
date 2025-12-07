@@ -59,7 +59,7 @@ let targetImg;
 function setup(){
   createCanvas(900, 600);
   noCursor();
-  targetImg = loadImage("images/doro.png"); // ターゲット画像
+  targetImg = loadImage("images/doro-removebg-preview.png"); // 新しい画像
 }
 
 // =======================
@@ -95,7 +95,7 @@ function draw(){
 function drawStartScreen(){
   push();
   fill(255);
-  textAlign(CENTER, CENTER); // 横・縦中央
+  textAlign(CENTER, CENTER);
   textSize(48);
   text("DOROゲーム", width/2, height/2 - 40);
   textSize(24);
@@ -211,14 +211,20 @@ function drawTargets(){
     if(!t.alive) continue;
     if(t.isHidden) continue;
 
-    // 影（オプション）
+    // 影
     push();
     tint(0,0,0,100);
     image(targetImg, t.x + 4, t.currentY + 6, t.size, t.size);
     pop();
 
-    // 本体
-    image(targetImg, t.x, t.currentY, t.size, t.size);
+    push();
+    translate(t.x, t.currentY);
+    // vx>0なら右方向へ移動している → 顔を左に向けるため反転
+    if(t.vx > 0){
+      scale(-1,1);
+    }
+    image(targetImg, 0, 0, t.size, t.size);
+    pop();
   }
 }
 
