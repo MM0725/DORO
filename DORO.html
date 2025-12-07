@@ -2,9 +2,10 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<title>DORO射的ゲーム（クロスヘア拡張版）</title>
+<title>DORO射的ゲーム（クロスヘア拡張版 + 射撃音）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/addons/p5.sound.min.js"></script>
 <style>
   html,body{height:100%;margin:0;background:#222;color:#fff;font-family:system-ui}
   #hint{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.36);
@@ -40,6 +41,9 @@ let isReloading = false;
 let crosshairSpread = 0;
 let crosshairTargetSpread = 0;
 
+// 射撃音
+let shootSound = null;
+
 // クリアタイム
 let startTime;
 let clearTime = null;
@@ -58,7 +62,21 @@ let targetImg;
 // ======================================================
 function setup(){
   createCanvas(900, 600);
-  targetImg = loadImage("images/doro-removebg-preview.png");
+  // 画像はあれば表示されます（なくても動作）
+  targetImg = loadImage("images/doro-removebg-preview.png", ()=>{}, ()=>{ /* ignore load error */ });
+
+  // 射撃音をロード（ファイルパス：sound/射撃音.MP3）
+  // ブラウザによってはユーザー操作があるまで再生制限があるため、
+  // loadSound はここで呼んでおき、再生自体はユーザー操作時に行います。
+  try{
+    shootSound = loadSound("sound/射撃音.MP3", 
+      ()=>{ /* loaded */ }, 
+      ()=>{ /* failed to load - ignore */ }
+    );
+  } catch(e){
+    // 安全のため何もしない
+    shootSound = null;
+  }
 }
 
 // ======================================================
@@ -237,7 +255,18 @@ function drawTargets(){
     push();
     translate(t.x, t.currentY);
     if(t.vx > 0) scale(-1,1);
-    image(targetImg,0,0,t.size,t.size);
+    // 画像が無くても ellipse による代替表示を残す
+    if(targetImg && targetImg.width > 0){
+      image(targetImg,0,0,t.size,t.size);
+    } else {
+      noStroke();
+      fill(250,120,120);
+      ellipse(0,0,t.size);
+      fill(255);
+      ellipse(0,0,t.size*0.58);
+      fill(220,20,20);
+      ellipse(0,0,t.size*0.28);
+    }
     pop();
   }
 }
@@ -269,6 +298,19 @@ function handleShooting(){
 }
 
 function fireBullet(){
+  // ★ 撃つ音を鳴らす（ロードされていれば）
+  try {
+    if (shootSound && shootSound.isLoaded && shootSound.isLoaded()) {
+      // 音が重なりやすい連射時は短めに再生（必要なら音量や playbackRate を調整）
+      shootSound.play();
+    } else if (shootSound && typeof shootSound.play === 'function') {
+      // isLoaded が無くても play を試す（フォールバック）
+      shootSound.play();
+    }
+  } catch(e){
+    // 音再生失敗は無視
+  }
+
   const ox = width/2;
   const oy = height - 6;
   const dx = mouseX - ox;
@@ -416,7 +458,7 @@ function drawTable(){
     tableTopLeftX, tableTopY,
     tableTopRightX, tableTopY,
     tableBottomRightX, tableBottomY,
-    tableBottomLeftX, tableBottomY
+    tableBottomLeftX, tableBottomLeftY ? tableBottomY : tableBottomY
   );
 }
 
