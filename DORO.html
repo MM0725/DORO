@@ -491,8 +491,8 @@ function drawClearScreen(){
   text(`外した弾: ${missedShots} 発`, width/2, height/2 - 30);
 
   // スコア内訳
-  const timePenaltyPerSec = 100;
-  const missPenalty = 200;
+  const timePenaltyPerSec = 50;
+  const missPenalty = 20;
   const timePenalty = Math.floor(clearTime * timePenaltyPerSec);
   const missPenaltyTotal = missedShots * missPenalty;
   textSize(18);
