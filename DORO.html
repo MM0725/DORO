@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>リンゴの木クリッカー（p5.js）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+  <style>
+    html,body { height:100%; margin:0; background:#88c; }
+    canvas { display:block; margin:0 auto; }
+    /* ボタンはキャンバス内で描画するのでここは最低限 */
+  </style>
+</head>
+<body>
+<script>
+/* ------------------------------
+   シンプルなリンゴの木クリッカー
+   クリック／タップでリンゴを取得してスコアを増やす
+   右下のボタンで自動収穫（アップグレード）購入可能
+   ------------------------------ */
+
+let apples = [];        // 画面にあるリンゴ群
+let score = 0;          // プレイヤーのスコア（所持金）
+let treeX, treeY;       // 木の位置
+let lastSpawn = 0;
+let spawnInterval = 1200; // ミリ秒
+let autoHarvest = 0;    // 毎秒自動で取れるリンゴ数（小数可）
+let lastAutoTick = 0;
+let clouds = [];
+let dayProgress = 0;    // 0..1 の昼夜サイクル
+let daySpeed = 0.00012; // サイクル速度（調整）
+let upgradeCost = 10;   // 次のアップグレード価格
+let canvasW = 800, canvasH = 500;
+
+function setup(){
+  // レスポンシブに最大幅を画面幅に合わせる
+  const cnv = createCanvas(canvasW, canvasH);
+  cnv.parent(document.body);
+  resetLayout();
+  treeX = width * 0.2;
+  treeY = height * 0.55;
+  textFont('sans-serif');
+  // 初期の雲
+  for(let i=0;i<4;i++) clouds.push(makeCloud(random(width), random(height*0.15, height*0.45), random(60,140)));
+  lastSpawn = millis();
+  lastAutoTick = millis();
+}
+
+function windowResized(){
+  resetLayout();
+}
+
+function resetLayout(){
+  // ビューポートに合わせてキャンバスをリサイズ（最大サイズは800x500）
+  const maxW = min(window.innerWidth - 20, 1000);
+  const scale = maxW / canvasW;
+  const newW = canvasW * scale;
+  const newH = canvasH * scale;
+  resizeCanvas(newW, newH);
+}
+
+function draw(){
+  // 昼夜背景（色を滑らかに変える）
+  dayProgress = (dayProgress + daySpeed * (deltaTime||16)) % 1;
+  const dayColor = color(135, 206, 235); // 青空
+  const nightColor = color(10, 24, 50);  // 夜
+  const bg = lerpColor(nightColor, dayColor, smoothstep(0,1, cos((dayProgress*PI*2)+PI)+1)); // smooth transition
+  background(bg);
+
+  drawSunAndMoon();
+  drawGround();
+  drawTree(treeX, treeY);
+  spawnApples();
+  updateApples();
+  drawApples();
+  updateClouds();
+  drawClouds();
+
+  // UI
+  drawHUD();
+  drawUpgradeButton();
+
+  // 自動収穫（毎秒単位で処理）
+  const now = millis();
+  if(now - lastAutoTick >= 100){
+    // 0.1sごとに分割して滑らかに加算
+    const portion = (now - lastAutoTick) / 1000.0;
+    const gained = autoHarvest * portion;
+    score += gained;
+    lastAutoTick = now;
+  }
+}
+
+/* ---------- 描画関数群 ---------- */
+
+function drawSunAndMoon(){
+  const cx = width * 0.85;
+  const cy = height * 0.2;
+  // sun/moon位置がちょっと動く
+  const angle = dayProgress * TWO_PI;
+  const y = cy + sin(angle) * 60;
+  const x = cx + cos(angle) * 60;
+  // 明るさに応じて色変化
+  const isDay = brightness(color(135,206,235)) * (0.01 + 0.99 * smoothstep(0,1,cos(angle)+1)) > 10;
+  noStroke();
+  if(isDay){
+    fill(255, 220, 80, 220);
+    ellipse(x, y, 60, 60);
+  } else {
+    fill(230, 240, 255, 230);
+    ellipse(x, y, 45, 45);
+  }
+}
+
+function drawGround(){
+  noStroke();
+  fill(30,130,30);
+  rect(0, height*0.65, width, height*0.35);
+  // 草の影っぽく
+  fill(20,100,20,120);
+  rect(0, height*0.65 + 18, width, 6);
+}
+
+function drawTree(x,y){
+  push();
+  translate(x,y);
+  // 幹
+  fill(90,50,20);
+  rectMode(CENTER);
+  rect(0, 80, 40, 160, 8);
+  // 葉っぱ（円の集合）
+  fill(30,140,40);
+  for(let i=-2;i<=2;i++){
+    for(let j=-1;j<=1;j++){
+      ellipse(i*40 + random(-6,6), j*-40 + random(-6,6), 120 + random(-10,10), 100 + random(-10,10));
+    }
+  }
+  pop();
+}
+
+function spawnApples(){
+  if(millis() - lastSpawn > spawnInterval){
+    lastSpawn = millis();
+    // 木の周辺にランダムに生成
+    const rx = treeX + random(-60, 60);
+    const ry = treeY - random(20, 110);
+    apples.push(makeApple(rx, ry));
+    // 難易度に応じて間隔を徐々に短く（最大で600msまで）
+    spawnInterval = max(600, spawnInterval - 3);
+  }
+}
+
+function makeApple(x,y){
+  return {
+    x: x,
+    y: y,
+    r: random(16,26),
+    vx: random(-0.4,0.4),
+    vy: 0,
+    falling: false,
+    wobble: random(0,1000)
+  };
+}
+
+function updateApples(){
+  for(let a of apples){
+    // 微妙な揺れ
+    a.wobble += 0.05;
+    a.x += sin(a.wobble) * 0.1;
+    if(a.falling){
+      a.vy += 0.25; // gravity
+      a.x += a.vx;
+      a.y += a.vy;
+      // 地面に到達したら小さくバウンドして止まる
+      const groundY = height*0.65 - a.r/2;
+      if(a.y > groundY){
+        a.y = groundY;
+        a.vy *= -0.25;
+        a.vx *= 0.6;
+        if(abs(a.vy) < 0.6) a.vy = 0;
+        if(abs(a.vx) < 0.02) a.vx = 0;
+      }
+    } else {
+      // ゆっくり木から落ちることもある
+      if(random() < 0.0008) a.falling = true;
+    }
+  }
+  // 採取済みリンゴは配列から取り除く（クリックでscoreを増やす）
+  // ただしここでは取り除きはクリック時または自動収穫時に行う
+}
+
+function drawApples(){
+  for(let a of apples){
+    push();
+    translate(a.x, a.y);
+    // 影
+    noStroke();
+    fill(0,0,0,40);
+    ellipse(6, a.r*0.8, a.r*1.2, a.r*0.6);
+    // 本体
+    fill(200 + sin(a.wobble)*20, 30, 30);
+    ellipse(0,0, a.r*1.1, a.r*1.0);
+    // ハイライト
+    fill(255,200);
+    ellipse(-a.r*0.2, -a.r*0.2, a.r*0.3, a.r*0.3);
+    // 茎
+    stroke(90,50,20);
+    strokeWeight(2);
+    line(0 - a.r*0.05, -a.r*0.45, 0 - a.r*0.05, -a.r*0.9);
+    pop();
+  }
+}
+
+function makeCloud(x,y,size){
+  return {x:x, y:y, size:size, speed: random(0.1, 0.4) };
+}
+
+function updateClouds(){
+  for(let c of clouds){
+    c.x += c.speed * (deltaTime/16.0);
+    if(c.x - c.size*0.6 > width) c.x = -c.size*0.6;
+  }
+  // 時々新しい雲を追加
+  if(random() < 0.004 && clouds.length < 6){
+    clouds.push(makeCloud(-80, random(height*0.05, height*0.45), random(70,150)));
+  }
+}
+
+function drawClouds(){
+  noStroke();
+  for(let c of clouds){
+    push();
+    translate(c.x, c.y);
+    // 複数の楕円で雲を表現
+    fill(255, 230);
+    ellipse(-c.size*0.2, 0, c.size*0.6, c.size*0.4);
+    ellipse(0, 0, c.size*0.8, c.size*0.46);
+    ellipse(c.size*0.25, 0, c.size*0.55, c.size*0.38);
+    pop();
+  }
+}
+
+/* ---------- 入力（クリック・タップ） ---------- */
+
+function mousePressed(){
+  // キャンバス外クリックは無視
+  if(mouseX < 0 || mouseX > width || mouseY < 0 || mouseY > height) return;
+
+  // まずアップグレードボタンをチェック（右下にボタン領域）
+  if(isOverUpgradeButton(mouseX, mouseY)){
+    attemptBuyUpgrade();
+    return;
+  }
+
+  // 近いリンゴを優先して選ぶ（クリックで収穫）
+  let clickedIndex = -1;
+  for(let i = apples.length - 1; i >= 0; i--){
+    const a = apples[i];
+    const d = dist(mouseX, mouseY, a.x, a.y);
+    if(d < a.r * 0.8){
+      clickedIndex = i;
+      break;
+    }
+  }
+  if(clickedIndex >= 0){
+    const a = apples[clickedIndex];
+    // 収穫時の獲得量は大きさに比例
+    const gain = round(map(a.r, 16, 26, 1, 4));
+    score += gain;
+    // エフェクト代わりに少しスコアを表示（簡易）
+    // 配列から削除
+    apples.splice(clickedIndex, 1);
+    return;
+  }
+
+  // リンゴがいなければクリックで木を揺らしてリンゴを落とす
+  // 指定確率で複数落とす
+  if(random() < 0.95){
+    const toDrop = floor(random(1,4));
+    for(let i=0;i<toDrop;i++){
+      const rx = treeX + random(-60, 60);
+      const ry = treeY - random(20, 110);
+      const a = makeApple(rx, ry);
+      a.falling = true;
+      a.vx = random(-1.6,1.6);
+      a.vy = random(-4.5,-2.0);
+      apples.push(a);
+    }
+  }
+}
+
+function isOverUpgradeButton(mx, my){
+  // 右下に幅140 x 60 のボタンを描いているので当たり判定
+  const btnW = width * 0.23;
+  const btnH = height * 0.12;
+  const bx = width - btnW - 16;
+  const by = height - btnH - 16;
+  return mx >= bx && mx <= bx + btnW && my >= by && my <= by + btnH;
+}
+
+function attemptBuyUpgrade(){
+  // アップグレードは自動収穫量を増やす
+  if(score >= upgradeCost){
+    score -= upgradeCost;
+    autoHarvest += 0.5; // 毎秒 +0.5 枚
+    upgradeCost = round(upgradeCost * 1.8);
+    // 当たり判定：少しリンゴを落とす（見た目の効果）
+    for(let i=0;i<2;i++){
+      const a = makeApple(treeX + random(-40,40), treeY - random(10,100));
+      a.falling = true;
+      a.vx = random(-1.2,1.2);
+      a.vy = random(-3.2,-1.6);
+      apples.push(a);
+    }
+  } else {
+    // 足りなければ小さく振動させる（視覚フィードバック）
+    // 簡易的にspawnIntervalを一時的に縮める（視覚効果）
+    spawnInterval = max(500, spawnInterval - 80);
+  }
+}
+
+/* ---------- HUD（スコア等） ---------- */
+
+function drawHUD(){
+  push();
+  // スコア表示（左上）
+  fill(255);
+  stroke(0,120);
+  strokeWeight(3);
+  textSize(20);
+  textAlign(LEFT, TOP);
+  noStroke();
+  fill(255, 250);
+  text("スコア: " + nf(floor(score), 0), 14, 8);
+  textSize(13);
+  text("自動: " + nf(autoHarvest, 1) + " /秒", 14, 34);
+  pop();
+}
+
+function drawUpgradeButton(){
+  const btnW = width * 0.23;
+  const btnH = height * 0.12;
+  const bx = width - btnW - 16;
+  const by = height - btnH - 16;
+
+  // ボタン背景
+  push();
+  rectMode(CORNER);
+  stroke(0, 120);
+  strokeWeight(2);
+  // 色は所持金で変える（買えるかどうか）
+  if(score >= upgradeCost){
+    fill(255, 200, 60, 230);
+  } else {
+    fill(200, 200, 200, 180);
+  }
+  rect(bx, by, btnW, btnH, 12);
+
+  // テキスト
+  noStroke();
+  fill(20,20,30);
+  textAlign(LEFT, CENTER);
+  textSize(16);
+  text("自動収穫アップ", bx + 12, by + btnH*0.35);
+  textSize(14);
+  text("コスト: " + upgradeCost, bx + 12, by + btnH*0.7);
+
+  // 小アイコン（リンゴ）
+  push();
+  translate(bx + btnW - 44, by + btnH/2);
+  noStroke();
+  fill(200,40,40);
+  ellipse(0,0,34,32);
+  fill(255,200);
+  ellipse(-6, -5, 7, 7);
+  pop();
+  pop();
+}
+
+/* -------------------------
+   ヘルパー関数
+   ------------------------- */
+
+function smoothstep(a,b,t){
+  t = constrain((t - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+</script>
+</body>
+</html>
