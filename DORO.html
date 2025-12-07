@@ -31,11 +31,11 @@ const laneCount = 5;
 let doroRemaining = 100;
 
 // 弾関連
-let maxAmmo = 30;  // 弾数30
+let maxAmmo = 30;
 let ammo = maxAmmo;
-let fireInterval = 200; // 0.2秒
+let fireInterval = 200;
 let lastFireTime = 0;
-let reloadTime = 500;   // 0.5秒リロード
+let reloadTime = 500;
 let isReloading = false;
 
 // クリアタイム計測
@@ -49,7 +49,6 @@ let gameStarted = false;
 // 描画用
 let lanes = [];
 let targets = [];
-let obstacles = [];
 let bullets = [];
 let targetImg;
 
@@ -59,7 +58,7 @@ let targetImg;
 function setup(){
   createCanvas(900, 600);
   noCursor();
-  targetImg = loadImage("images/doro-removebg-preview.png"); // 新しい画像
+  targetImg = loadImage("images/doro-removebg-preview.png"); 
 }
 
 // =======================
@@ -74,17 +73,14 @@ function draw(){
   }
 
   drawTable();
-  drawLaneLines();
   updateTargets();
   drawTargets();
-  drawObstacles();
   updateBullets();
   drawBullets();
   drawCrosshair();
   handleShooting();
   drawUI();
 
-  // クリア判定
   if(!gameCleared && doroRemaining <= 0){
     clearTime = (millis() - startTime)/1000;
     gameCleared = true;
@@ -107,7 +103,6 @@ function drawStartScreen(){
 function initScene(){
   lanes = [];
   targets = [];
-  obstacles = [];
   bullets = [];
   ammo = maxAmmo;
   isReloading = false;
@@ -148,19 +143,9 @@ function initScene(){
         bouncePhase: phase,
         bounceFreq: lerp(0.06, 0.12, random()),
         vx: 0,
-        vy: 0,
-        isHidden: false
+        vy: 0
       });
     }
-
-    const laneWidth = rightX - leftX;
-    obstacles.push({
-      lane: i,
-      x: leftX + random(laneWidth * 0.18, laneWidth * 0.82),
-      y: y + 6,
-      w: size * 1.8,
-      h: size * 0.9
-    });
 
     y += gap;
   }
@@ -199,9 +184,6 @@ function updateTargets(){
     const time = frameCount;
     const bounce = sin(time * t.bounceFreq + t.bouncePhase) * t.bounceAmp;
     t.currentY = t.baseY - abs(bounce);
-
-    const o = obstacles[t.lane];
-    t.isHidden = (t.x > o.x - o.w/2 && t.x < o.x + o.w/2);
   }
 }
 
@@ -209,34 +191,12 @@ function drawTargets(){
   imageMode(CENTER);
   for(let t of targets){
     if(!t.alive) continue;
-    if(t.isHidden) continue;
-
-    // 影
-    push();
-    tint(0,0,0,100);
-    image(targetImg, t.x + 4, t.currentY + 6, t.size, t.size);
-    pop();
 
     push();
     translate(t.x, t.currentY);
-    // vx>0なら右方向へ移動している → 顔を左に向けるため反転
-    if(t.vx > 0){
-      scale(-1,1);
-    }
+    if(t.vx > 0) scale(-1,1);
     image(targetImg, 0, 0, t.size, t.size);
     pop();
-  }
-}
-
-// ==================== Obstacles ====================
-function drawObstacles(){
-  noStroke();
-  fill(170);
-  for(let o of obstacles){
-    ellipse(o.x, o.y - o.h/2, o.w * 0.84, o.w * 0.36);
-    rectMode(CENTER);
-    rect(o.x, o.y, o.w, o.h, o.w * 0.12);
-    ellipse(o.x, o.y + o.h/2, o.w * 0.96, o.w * 0.46);
   }
 }
 
@@ -285,7 +245,6 @@ function updateBullets(){
     for(let ti = 0; ti < targets.length; ti++){
       const t = targets[ti];
       if(!t.alive) continue;
-      if(t.isHidden) continue;
 
       const d = dist(b.x, b.y, t.x, t.currentY);
       if(d <= t.size * 0.5){
@@ -349,7 +308,7 @@ function drawUI(){
   pop();
 }
 
-// ==================== Table & lane drawing ====================
+// ==================== Table drawing ====================
 function drawTable(){
   noStroke();
   fill(145,100,60);
@@ -361,15 +320,7 @@ function drawTable(){
   );
 }
 
-function drawLaneLines(){
-  stroke(200);
-  strokeWeight(2);
-  for(let L of lanes){
-    line(L.leftX, L.y, L.rightX, L.y);
-  }
-}
-
-// ==================== Start / Shooting click ====================
+// ==================== Start click ====================
 function mousePressed(){
   if(!gameStarted){
     gameStarted = true;
