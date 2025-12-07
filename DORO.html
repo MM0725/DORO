@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<title>DORO射的ゲーム（射撃音＋リロード音版）</title>
+<title>DORO射的ゲーム（射撃音・リロード音統合版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 
 <!-- p5.js -->
@@ -50,8 +50,9 @@ let crosshairSpread = 0;
 let crosshairTargetSpread = 0;
 
 // ---- ★ 追加：音 ----
-let shootSound = null;
-let reloadSound = null;
+let longShootSound = null;   // 長尺射撃音 (1回のみ再生)
+let reloadSound = null;      // リロード音
+let isLongSoundPlaying = false;
 
 let startTime = 0;
 let clearTime = 0;
@@ -72,9 +73,9 @@ function setup(){
 
   targetImg = loadImage("images/doro-removebg-preview.png");
 
-  // ★ 射撃音
+  // ★ 長尺射撃音
   try{
-    shootSound = loadSound("sound/IMG_9225.mp3");
+    longShootSound = loadSound("sound/ロング射撃音.mp3");
   }catch(e){}
 
   // ★ リロード音
@@ -168,6 +169,7 @@ function initScene(){
   isReloading = false;
   lastFireTime = 0;
   gameCleared = false;
+  isLongSoundPlaying = false;
 
   const minGap = 20;
   const maxGap = 95;
@@ -274,44 +276,60 @@ function drawTargets(){
 // 弾処理（射撃音＆リロード音）
 // =========================
 function handleShooting(){
-  if(!mouseIsPressed || ammo <= 0){
 
-    if(!isReloading && ammo < maxAmmo){
+  // ---- 射撃停止状態（マウス離す or 弾切れ） ----
+  if (!mouseIsPressed || ammo <= 0) {
+
+    // ★ 長尺射撃音を止める
+    if (isLongSoundPlaying) {
+      longShootSound.stop();
+      isLongSoundPlaying = false;
+    }
+
+    // ★ リロード開始
+    if (!isReloading && ammo < maxAmmo) {
       isReloading = true;
 
-      // ★★ リロード音再生
+      // リロード音
       try{
-        if(reloadSound && reloadSound.isLoaded && reloadSound.isLoaded()){
+        if (reloadSound && reloadSound.isLoaded && reloadSound.isLoaded()) {
           reloadSound.play();
         }
       }catch(e){}
 
-      setTimeout(()=>{
+      setTimeout(() => {
         ammo = maxAmmo;
         isReloading = false;
       }, reloadTime);
     }
+
     return;
   }
 
+
+  // ---- 射撃開始：ロング射撃音を1回だけ再生 ----
+  if (!isLongSoundPlaying) {
+    try{
+      if (longShootSound && longShootSound.isLoaded && longShootSound.isLoaded()) {
+        longShootSound.play();
+      }
+    }catch(e){}
+    isLongSoundPlaying = true;
+  }
+
+
+  // ---- 通常発射処理 ----
   const now = millis();
   if(now - lastFireTime > fireInterval && !isReloading){
     fireBullet();
     lastFireTime = now;
     ammo--;
-
     crosshairTargetSpread = 12;
   }
 }
 
-// ★ 弾生成＋射撃音
+// 弾生成
 function fireBullet(){
-  try{
-    if(shootSound && shootSound.isLoaded && shootSound.isLoaded()){
-      shootSound.play();
-    }
-  }catch(e){}
-
   const ox = width/2;
   const oy = height - 6;
   const dx = mouseX - ox;
