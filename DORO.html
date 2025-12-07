@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<title>DORO射撃ゲーム（完全統合版）</title>
+<title>DORO射撃ゲーム（完全統合版 — スコア実装）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
@@ -10,10 +10,9 @@
 
 <style>
   body { margin:0; background:#222; color:#fff; font-family:sans-serif; }
-  #hint {
-    position: fixed; top: 10px; left: 10px;
-    background: rgba(0,0,0,0.4); padding: 8px 12px;
-    font-size: 14px; border-radius: 6px;
+  #hint { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.4); padding: 8px 12px; font-size: 14px; border-radius: 6px; }
+  .btn {
+    background:#3aa; color:#fff; padding:8px 12px; border-radius:6px; cursor:pointer; display:inline-block; margin-top:8px;
   }
 </style>
 </head>
@@ -22,9 +21,9 @@
 <div id="hint">Hold mouse to shoot / Auto reload</div>
 
 <script>
-// ======================================================================================
+// =========================
 // 変数・定義
-// ======================================================================================
+// =========================
 const tableTopLeftX  = 230;
 const tableTopRightX = 570;
 const tableBottomLeftX  = 80;
@@ -58,13 +57,19 @@ let screenState = "start";
 let lanes = [];
 let targets = [];
 let bullets = [];
-let targetImg;
+let targetImg = null;
 
-// ======================================================================================
+// --- スコア用
+const BASE_SCORE = 10000;
+let missedShots = 0; // 画面外に出た弾をカウント
+let lastScore = 0;
+let highScore = 0;
+const HIGH_KEY = "doro_highscore";
+
+// =========================
 // preload（音と画像読み込み）
-// ======================================================================================
+// =========================
 function preload() {
-
   // 射撃音
   try {
     longShootSound = loadSound("sound/shot.mp3",
@@ -90,27 +95,32 @@ function preload() {
   } catch(e) { console.warn(e); }
 }
 
-// ======================================================================================
+// =========================
 function setup() {
   createCanvas(900, 600);
 
   // 初期音量
-  try { longShootSound.setVolume(1.0); } catch(e){}
-  try { reloadSound.setVolume(1.0); } catch(e){}
+  try { if(longShootSound) longShootSound.setVolume(1.0); } catch(e){}
+  try { if(reloadSound) reloadSound.setVolume(1.0); } catch(e){}
+
+  // ハイスコア読み込み
+  const stored = localStorage.getItem(HIGH_KEY);
+  highScore = stored ? parseInt(stored,10) || 0 : 0;
 }
 
-// ======================================================================================
+// =========================
 function draw() {
   background(36,42,64);
 
   if(screenState === "start"){ drawStartScreen(); cursor(); }
   else if(screenState === "instructions"){ drawInstructionsScreen(); cursor(); }
   else if(screenState === "game"){ noCursor(); drawGame(); }
+  else if(screenState === "clear"){ noCursor(); drawClearScreen(); }
 }
 
-// ======================================================================================
+// =========================
 // 画面描画
-// ======================================================================================
+// =========================
 function drawStartScreen(){
   push();
   fill(255);
@@ -146,7 +156,7 @@ function drawInstructionsScreen(){
   pop();
 }
 
-// ======================================================================================
+// =========================
 function drawGame(){
   drawTable();
   updateTargets();
@@ -160,12 +170,13 @@ function drawGame(){
   if(!gameCleared && doroRemaining <= 0){
     clearTime = (millis() - startTime)/1000;
     gameCleared = true;
+    // スコア計算 & クリア画面へ
+    computeScoreAndSave();
+    screenState = "clear";
   }
 }
 
-// ======================================================================================
-// 初期化
-// ======================================================================================
+// =========================
 function initScene(){
   lanes=[]; targets=[]; bullets=[];
   ammo = maxAmmo;
@@ -173,6 +184,8 @@ function initScene(){
   lastFireTime = 0;
   gameCleared = false;
   isLongSoundPlaying = false;
+  missedShots = 0;
+  lastScore = 0;
 
   const minGap = 20; const maxGap = 95;
   let y = tableTopY + 12;
@@ -207,9 +220,9 @@ function initScene(){
   startTime = millis();
 }
 
-// ======================================================================================
+// =========================
 // 的の更新
-// ======================================================================================
+// =========================
 function updateTargets(){
   for(let t of targets){
     if(!t.alive) continue;
@@ -257,9 +270,9 @@ function drawTargets(){
   }
 }
 
-// ======================================================================================
+// =========================
 // 弾
-// ======================================================================================
+// =========================
 function fireBullet(){
   const ox = width/2;
   const oy = height - 10;
@@ -280,7 +293,9 @@ function updateBullets(){
     b.x += b.vx;
     b.y += b.vy;
 
+    // 画面外に出た場合 → ミスとしてカウントして削除
     if(b.x < -50 || b.x > width+50 || b.y < -50 || b.y > height+50){
+      missedShots++; // 追加：外した弾をカウント
       bullets.splice(i,1);
       continue;
     }
@@ -305,9 +320,9 @@ function drawBullets(){
   for(let b of bullets) ellipse(b.x,b.y,12);
 }
 
-// ======================================================================================
+// =========================
 // クロスヘア
-// ======================================================================================
+// =========================
 function drawCrosshair(){
   crosshairSpread = lerp(crosshairSpread, crosshairTargetSpread, 0.15);
   crosshairTargetSpread *= 0.85;
@@ -327,9 +342,9 @@ function drawCrosshair(){
   pop();
 }
 
-// ======================================================================================
+// =========================
 // UI
-// ======================================================================================
+// =========================
 function drawUI(){
   push();
   fill(255); textSize(16);
@@ -361,6 +376,13 @@ function drawUI(){
   text(String(ammo).padStart(3,"0"), barX, barY + barH + 14);
   pop();
 
+  // ミスカウンタ（画面に表示）
+  push();
+  textSize(14);
+  fill(255);
+  text(`外した弾: ${missedShots}`, 10, 70);
+  pop();
+
   if(gameCleared){
     push();
     fill(255); textSize(20);
@@ -370,9 +392,9 @@ function drawUI(){
   }
 }
 
-// ======================================================================================
+// =========================
 // 射撃・リロード（音含む）
-// ======================================================================================
+// =========================
 function handleShooting(){
 
   // マウス離し or 残弾なし
@@ -404,17 +426,11 @@ function handleShooting(){
     return;
   }
 
-  // -----------------------
   // 射撃開始 → 長尺射撃音を1回だけ再生
-  // -----------------------
   if(!isLongSoundPlaying){
-
-    // 音がブロックされていたら解除
     try {
       if(getAudioContext().state !== "running") getAudioContext().resume();
     } catch(e){}
-
-    // 再生
     try {
       if(longShootSound?.isLoaded && longShootSound.isLoaded()){
         longShootSound.play();
@@ -422,15 +438,12 @@ function handleShooting(){
         longShootSound?.play?.();
       }
       isLongSoundPlaying = true;
-
     } catch(e){
       console.warn("longShootSound play error:", e);
     }
   }
 
-  // -----------------------
   // 通常弾発射
-  // -----------------------
   const now = millis();
   if(now - lastFireTime > fireInterval && !isReloading){
     fireBullet();
@@ -440,9 +453,122 @@ function handleShooting(){
   }
 }
 
-// ======================================================================================
-// テーブル
-// ======================================================================================
+// =========================
+// スコア計算・保存
+// =========================
+function computeScoreAndSave(){
+  // ペナルティ設定（必要ならここを調整）
+  const timePenaltyPerSec = 100;   // 秒 × 100
+  const missPenalty = 200;         // 1ミスあたり 200 点
+
+  const timePenalty = Math.floor(clearTime * timePenaltyPerSec);
+  const missPenaltyTotal = missedShots * missPenalty;
+
+  let score = BASE_SCORE - timePenalty - missPenaltyTotal;
+  if(score < 0) score = 0;
+
+  lastScore = score;
+
+  // ハイスコア更新
+  if(score > highScore){
+    highScore = score;
+    try { localStorage.setItem(HIGH_KEY, String(highScore)); } catch(e){}
+  }
+}
+
+// =========================
+// クリア画面描画
+// =========================
+function drawClearScreen(){
+  push();
+  fill(255);
+  textAlign(CENTER);
+  textSize(56);
+  text("CLEAR!", width/2, height/2 - 120);
+
+  textSize(20);
+  text(`クリア時間: ${clearTime.toFixed(2)} 秒`, width/2, height/2 - 60);
+  text(`外した弾: ${missedShots} 発`, width/2, height/2 - 30);
+
+  // スコア内訳
+  const timePenaltyPerSec = 100;
+  const missPenalty = 200;
+  const timePenalty = Math.floor(clearTime * timePenaltyPerSec);
+  const missPenaltyTotal = missedShots * missPenalty;
+  textSize(18);
+  text(`計算: ${BASE_SCORE} - (時間 ${Math.floor(clearTime)}s × ${timePenaltyPerSec}) - (外し ${missedShots} × ${missPenalty})`, width/2, height/2 + 0);
+
+  textSize(36);
+  text(`スコア: ${lastScore}`, width/2, height/2 + 60);
+
+  textSize(18);
+  text(`ハイスコア: ${highScore}`, width/2, height/2 + 100);
+
+  // 再挑戦ボタン（簡易）
+  textSize(16);
+  fill(200,230,255);
+  rectMode(CENTER);
+  rect(width/2 - 120, height/2 + 150, 160, 44, 8);
+  fill(20);
+  text("リトライ", width/2 - 120, height/2 + 150);
+
+  fill(200,230,255);
+  rect(width/2 + 120, height/2 + 150, 160, 44, 8);
+  fill(20);
+  text("タイトルへ", width/2 + 120, height/2 + 150);
+
+  // クリック判定は mousePressedClearScreen() に移譲
+  pop();
+}
+
+function mousePressed(){
+  // 音のロック解除（ユーザー操作で必ず呼ぶ）
+  try {
+    if(getAudioContext().state !== "running") getAudioContext().resume();
+  } catch(e){}
+
+  if(screenState === "start"){
+    // スタート
+    if(mouseX > width/2-100 && mouseX < width/2+100 &&
+       mouseY > height/2-30 && mouseY < height/2+30){
+      screenState = "game";
+      initScene();
+      return;
+    }
+    // プレイ方法
+    if(mouseX > width/2-100 && mouseX < width/2+100 &&
+       mouseY > height/2+60 && mouseY < height/2+120){
+      screenState = "instructions";
+      return;
+    }
+  } else if(screenState === "instructions"){
+    screenState = "start";
+  } else if(screenState === "game"){
+    // ゲーム中の射撃は draw の handleShooting が判定（押しっぱなしで射撃）
+    // ここは特に何もしない（ただし start -> game の切替は上で処理済み）
+  } else if(screenState === "clear"){
+    // クリア画面のボタン判定
+    // リトライ ボタン
+    const retryX = width/2 - 120, retryY = height/2 + 150, w=160, h=44;
+    if(mouseX > retryX - w/2 && mouseX < retryX + w/2 && mouseY > retryY - h/2 && mouseY < retryY + h/2){
+      // リトライ：DOROを再セット（同じ設定）
+      doroRemaining = 100;
+      screenState = "game";
+      initScene();
+      return;
+    }
+    // タイトルへ
+    const titleX = width/2 + 120, titleY = height/2 + 150;
+    if(mouseX > titleX - w/2 && mouseX < titleX + w/2 && mouseY > titleY - h/2 && mouseY < titleY + h/2){
+      screenState = "start";
+      return;
+    }
+  }
+}
+
+// =========================
+// テーブル描画
+// =========================
 function drawTable(){
   noStroke();
   fill(145,100,60);
@@ -453,40 +579,6 @@ function drawTable(){
     tableBottomLeftX, tableBottomY
   );
 }
-
-// ======================================================================================
-function mousePressed(){
-
-  // 音のロック解除
-  try {
-    if(getAudioContext().state !== "running") getAudioContext().resume();
-  } catch(e){}
-
-  if(screenState === "start"){
-
-    // スタート
-    if(mouseX > width/2-100 && mouseX < width/2+100 &&
-       mouseY > height/2-30 && mouseY < height/2+30){
-
-      screenState = "game";
-      initScene();
-      return;
-    }
-
-    // プレイ方法
-    if(mouseX > width/2-100 && mouseX < width/2+100 &&
-       mouseY > height/2+60 && mouseY < height/2+120){
-
-      screenState = "instructions";
-      return;
-    }
-  }
-
-  else if(screenState === "instructions"){
-    screenState = "start";
-  }
-}
-
 </script>
 </body>
 </html>
