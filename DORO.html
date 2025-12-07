@@ -320,23 +320,45 @@ function drawUI(){
   text(`DORO残り ${doroRemaining}匹`, 12, 50);
   pop();
 
-  // --------------------
-  // 残弾バーと数字表示
-  // --------------------
-  const barWidth = 100;
-  const barHeight = 12;
-  const barX = mouseX - barWidth/2;
-  const barY = mouseY - 40;
+ // --------------------
+// 残弾バー + 三桁カウンター（クロスヘア左横）
+// --------------------
 
-  let barColor;
-  if(isReloading || ammo <= 0){
-    barColor = color(150); // 灰色
-  } else if(ammo <= maxAmmo/2){
-    barColor = color(255,0,0); // 赤
-  } else {
-    barColor = color(255); // 白
-  }
+// クロスヘアの左横に
+const barWidth = 50;
+const barHeight = 12;
 
+const barX = mouseX - 70;   // クロスヘアの左 70px
+const barY = mouseY - barHeight / 2;  // クロスヘア中心と縦位置を合わせる
+
+// 色判定
+let barColor;
+if(isReloading || ammo <= 0){
+  barColor = color(150); // 灰色
+} else if(ammo <= maxAmmo/2){
+  barColor = color(255,0,0); // 赤
+} else {
+  barColor = color(255); // 白
+}
+
+// 背景
+push();
+noStroke();
+fill(80);
+rect(barX, barY, barWidth, barHeight, 4);
+
+// 残量バー
+fill(barColor);
+rect(barX, barY, (ammo/maxAmmo)*barWidth, barHeight, 4);
+pop();
+
+// 三桁カウンター（バーの真下）
+push();
+textSize(16);
+textAlign(LEFT, TOP);
+fill(barColor);
+text(String(ammo).padStart(3,'0'), barX, barY + barHeight + 4);
+pop();
   push();
   noStroke();
   fill(100);
