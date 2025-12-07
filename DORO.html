@@ -21,10 +21,8 @@ const tableTopLeftX  = 230;
 const tableTopRightX = 570;
 const tableBottomLeftX  = 80;
 const tableBottomRightX = 720;
-
 const tableTopY = 140;
 const tableBottomY = 440;
-
 const laneCount = 5;
 
 // DORO関連
@@ -44,7 +42,6 @@ let clearTime = null;
 let gameCleared = false;
 
 // 画面状態
-// start:スタート画面 / instructions:プレイ方法 / game:ゲーム中
 let screenState = "start";
 
 // 描画用
@@ -153,10 +150,8 @@ function initScene(){
     const gap = lerp(minGap, maxGap, t);
     const size = lerp(34, 78, t);
     const speed = lerp(1.4, 3.6, t);
-
     const leftX = map(y, tableTopY, tableBottomY, tableTopLeftX, tableBottomLeftX);
     const rightX = map(y, tableTopY, tableBottomY, tableTopRightX, tableBottomRightX);
-
     lanes.push({ y, leftX, rightX, size, speed });
 
     const amp = lerp(22, 30, t);
@@ -206,7 +201,6 @@ function updateTargets(){
     t.vx += random(-0.04,0.04);
     t.vx = constrain(t.vx,-4.5,4.5);
     t.vy = constrain(t.vy,-1.2,1.2);
-
     t.x += t.vx;
     t.baseY += t.vy;
     t.baseY = lerp(t.baseY,L.y,0.04);
@@ -226,10 +220,9 @@ function drawTargets(){
   imageMode(CENTER);
   for(let t of targets){
     if(!t.alive) continue;
-
     push();
     translate(t.x, t.currentY);
-    if(t.vx > 0) scale(-1,1); // 右方向なら反転
+    if(t.vx > 0) scale(-1,1);
     image(targetImg, 0, 0, t.size, t.size);
     pop();
   }
@@ -280,7 +273,6 @@ function updateBullets(){
     for(let ti = 0; ti < targets.length; ti++){
       const t = targets[ti];
       if(!t.alive) continue;
-
       const d = dist(b.x, b.y, t.x, t.currentY);
       if(d <= t.size * 0.5){
         t.alive = false;
@@ -326,21 +318,49 @@ function drawUI(){
   text("Hold mouse: shoot. Bullets hit targets or leave screen.", 12, 20);
   textSize(16);
   text(`DORO残り ${doroRemaining}匹`, 12, 50);
+  pop();
 
-  textAlign(RIGHT);
-  if(isReloading){
-    text("Reloading...", width-12, height-20);
+  // --------------------
+  // 残弾バーと数字表示
+  // --------------------
+  const barWidth = 100;
+  const barHeight = 12;
+  const barX = mouseX - barWidth/2;
+  const barY = mouseY - 40;
+
+  let barColor;
+  if(isReloading || ammo <= 0){
+    barColor = color(150); // 灰色
+  } else if(ammo <= maxAmmo/2){
+    barColor = color(255,0,0); // 赤
   } else {
-    text(`${ammo}/${maxAmmo}`, width-12, height-20);
+    barColor = color(255); // 白
   }
 
+  push();
+  noStroke();
+  fill(100);
+  rect(barX, barY, barWidth, barHeight, 4);
+  fill(barColor);
+  rect(barX, barY, (ammo/maxAmmo)*barWidth, barHeight, 4);
+  pop();
+
+  push();
+  textSize(16);
+  textAlign(CENTER, BOTTOM);
+  fill(barColor);
+  text(`${String(ammo).padStart(3,'0')}/${String(maxAmmo).padStart(3,'0')}`, barX + barWidth/2, barY - 2);
+  pop();
+
+  // クリアタイム
   if(gameCleared){
+    push();
     textSize(20);
     textAlign(CENTER);
+    fill(255);
     text(`クリアタイム: ${clearTime.toFixed(2)}秒`, width/2, 30);
+    pop();
   }
-  textAlign(LEFT);
-  pop();
 }
 
 // ==================== Table drawing ====================
@@ -361,7 +381,6 @@ function mousePressed(){
     if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
        mouseY > height/2 - 25 && mouseY < height/2 + 25){
       screenState = "game";
-      gameStarted = true;
       initScene();
       return;
     }
