@@ -2,21 +2,22 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<title>射的ゲーム（DORO・弾30・クリアタイム版）</title>
+<title>DORO射的ゲーム（クロスヘア拡張版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
 <style>
-  html,body{height:100%;margin:0;background:#222;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN",Meiryo}
-  #hint{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.36);padding:8px 10px;border-radius:8px;font-size:13px;z-index:10}
+  html,body{height:100%;margin:0;background:#222;color:#fff;font-family:system-ui}
+  #hint{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.36);
+        padding:8px 10px;border-radius:8px;font-size:13px;z-index:10}
 </style>
 </head>
 <body>
-<div id="hint">Hold mouse: shoot. Bullets hit targets or leave screen. Auto reload when released or empty.</div>
+<div id="hint">Hold mouse: shoot. Auto reload when released or empty.</div>
 
 <script>
-// =======================
-// Config / Scene params
-// =======================
+// ======================================================
+// 基本設定
+// ======================================================
 const tableTopLeftX  = 230;
 const tableTopRightX = 570;
 const tableBottomLeftX  = 80;
@@ -25,10 +26,9 @@ const tableTopY = 140;
 const tableBottomY = 440;
 const laneCount = 5;
 
-// DORO関連
 let doroRemaining = 100;
 
-// 弾関連
+// 弾
 let maxAmmo = 30;
 let ammo = maxAmmo;
 let fireInterval = 200;
@@ -36,47 +36,52 @@ let lastFireTime = 0;
 let reloadTime = 500;
 let isReloading = false;
 
-// クリアタイム計測
+// クロスヘア広がりアニメ
+let crosshairSpread = 0;
+let crosshairTargetSpread = 0;
+
+// クリアタイム
 let startTime;
 let clearTime = null;
 let gameCleared = false;
 
-// 画面状態
+// 画面
 let screenState = "start";
 
-// 描画用
 let lanes = [];
 let targets = [];
 let bullets = [];
 let targetImg;
 
-// =======================
+// ======================================================
 // p5.js setup
-// =======================
+// ======================================================
 function setup(){
   createCanvas(900, 600);
   targetImg = loadImage("images/doro-removebg-preview.png");
 }
 
-// =======================
-// p5.js draw
-// =======================
+// ======================================================
+// draw
+// ======================================================
 function draw(){
   background(36,42,64);
 
   if(screenState === "start"){
     drawStartScreen();
-    cursor(); // カーソル表示
+    cursor();
   } else if(screenState === "instructions"){
     drawInstructionsScreen();
-    cursor(); // カーソル表示
+    cursor();
   } else if(screenState === "game"){
-    noCursor(); // ゲーム中だけ非表示
+    noCursor();
     drawGame();
   }
 }
 
-// ==================== スタート画面 ====================
+// ======================================================
+// Start Screen
+// ======================================================
 function drawStartScreen(){
   push();
   fill(255);
@@ -85,22 +90,21 @@ function drawStartScreen(){
   text("DOROゲーム", width/2, height/2 - 80);
 
   rectMode(CENTER);
-  // スタートボタン
+
   fill(50,150,255);
   rect(width/2, height/2, 180, 50, 10);
   fill(255);
   textSize(24);
   text("スタート", width/2, height/2);
 
-  // プレイ方法ボタン
   fill(50,200,100);
   rect(width/2, height/2 + 80, 180, 50, 10);
   fill(255);
   text("プレイ方法", width/2, height/2 + 80);
+
   pop();
 }
 
-// ==================== プレイ方法画面 ====================
 function drawInstructionsScreen(){
   push();
   fill(255);
@@ -114,7 +118,9 @@ function drawInstructionsScreen(){
   pop();
 }
 
-// ==================== ゲーム画面 ====================
+// ======================================================
+// Game Screen
+// ======================================================
 function drawGame(){
   drawTable();
   updateTargets();
@@ -131,11 +137,14 @@ function drawGame(){
   }
 }
 
-// ==================== Scene initialization ====================
+// ======================================================
+// Scene Init
+// ======================================================
 function initScene(){
   lanes = [];
   targets = [];
   bullets = [];
+
   ammo = maxAmmo;
   isReloading = false;
   lastFireTime = 0;
@@ -146,54 +155,58 @@ function initScene(){
   let y = tableTopY + 12;
 
   for(let i=0;i<laneCount;i++){
-    const t = i / (laneCount - 1);
+    const t = i/(laneCount-1);
     const gap = lerp(minGap, maxGap, t);
-    const size = lerp(34, 78, t);
-    const speed = lerp(1.4, 3.6, t);
-    const leftX = map(y, tableTopY, tableBottomY, tableTopLeftX, tableBottomLeftX);
-    const rightX = map(y, tableTopY, tableBottomY, tableTopRightX, tableBottomRightX);
-    lanes.push({ y, leftX, rightX, size, speed });
+    const size = lerp(34,78,t);
+    const speed= lerp(1.4,3.6,t);
 
-    const amp = lerp(22, 30, t);
+    const leftX = map(y, tableTopY, tableBottomY, tableTopLeftX, tableBottomLeftX);
+    const rightX= map(y, tableTopY, tableBottomY, tableTopRightX, tableBottomRightX);
+
+    lanes.push({y,leftX,rightX,size,speed});
+
+    const amp = lerp(22,30,t);
     const phase = random(TWO_PI);
 
     for(let j=0;j<Math.ceil(doroRemaining/laneCount); j++){
-      const xPos = random(leftX + 20, rightX - 20);
+      const xPos = random(leftX+20, rightX-20);
       targets.push({
-        lane: i,
-        baseX: xPos,
-        x: xPos,
-        currentY: y,
-        baseY: y,
+        lane:i,
+        baseX:xPos,
+        x:xPos,
+        currentY:y,
+        baseY:y,
         size,
-        dir: random([-1,1]),
+        dir:random([-1,1]),
         speed,
-        alive: true,
-        bounceAmp: amp,
-        bouncePhase: phase,
-        bounceFreq: lerp(0.06, 0.12, random()),
-        vx: 0,
-        vy: 0
+        alive:true,
+        bounceAmp:amp,
+        bouncePhase:phase,
+        bounceFreq:lerp(0.06,0.12,random()),
+        vx:0,
+        vy:0
       });
     }
-
     y += gap;
   }
 
   startTime = millis();
 }
 
-// ==================== Targets ====================
+// ======================================================
+// Target Update
+// ======================================================
 function updateTargets(){
   for(let t of targets){
     if(!t.alive) continue;
 
     const L = lanes[t.lane];
-    const distToMouse = dist(mouseX, mouseY, t.x, t.baseY);
-    if(distToMouse < 200){
-      const angle = atan2(t.baseY - mouseY, t.x - mouseX);
-      t.vx += cos(angle) * 0.35;
-      t.vy += sin(angle) * 0.12;
+    const d = dist(mouseX,mouseY,t.x,t.baseY);
+
+    if(d < 200){
+      const ang = atan2(t.baseY - mouseY, t.x - mouseX);
+      t.vx += cos(ang)*0.35;
+      t.vy += sin(ang)*0.12;
     } else {
       t.vx += t.speed * t.dir * 0.06;
     }
@@ -201,17 +214,18 @@ function updateTargets(){
     t.vx += random(-0.04,0.04);
     t.vx = constrain(t.vx,-4.5,4.5);
     t.vy = constrain(t.vy,-1.2,1.2);
+
     t.x += t.vx;
     t.baseY += t.vy;
-    t.baseY = lerp(t.baseY,L.y,0.04);
+    t.baseY = lerp(t.baseY, L.y, 0.04);
 
     const leftBound = L.leftX + 12;
-    const rightBound = L.rightX - 12;
+    const rightBound= L.rightX - 12;
     if(t.x < leftBound) t.x = rightBound - 2;
     if(t.x > rightBound) t.x = leftBound + 2;
 
     const time = frameCount;
-    const bounce = sin(time * t.bounceFreq + t.bouncePhase) * t.bounceAmp;
+    const bounce = sin(time*t.bounceFreq + t.bouncePhase) * t.bounceAmp;
     t.currentY = t.baseY - abs(bounce);
   }
 }
@@ -223,12 +237,14 @@ function drawTargets(){
     push();
     translate(t.x, t.currentY);
     if(t.vx > 0) scale(-1,1);
-    image(targetImg, 0, 0, t.size, t.size);
+    image(targetImg,0,0,t.size,t.size);
     pop();
   }
 }
 
-// ==================== Shooting ====================
+// ======================================================
+// Shooting
+// ======================================================
 function handleShooting(){
   if(!mouseIsPressed || ammo <= 0){
     if(!isReloading && ammo < maxAmmo){
@@ -246,39 +262,50 @@ function handleShooting(){
     fireBullet();
     lastFireTime = now;
     ammo--;
+
+    // ★撃った瞬間にクロスヘア拡大
+    crosshairTargetSpread = 12;
   }
 }
 
 function fireBullet(){
-  const originX = width / 2;
-  const originY = height - 6;
-  const dx = mouseX - originX;
-  const dy = mouseY - originY;
-  const d = sqrt(dx*dx + dy*dy) || 1;
-  bullets.push({x: originX, y: originY, vx: (dx/d)*20, vy: (dy/d)*20});
+  const ox = width/2;
+  const oy = height - 6;
+  const dx = mouseX - ox;
+  const dy = mouseY - oy;
+  const d = sqrt(dx*dx+dy*dy)||1;
+
+  bullets.push({
+    x:ox, y:oy,
+    vx:(dx/d)*20,
+    vy:(dy/d)*20
+  });
 }
 
+// ======================================================
+// Bullets
+// ======================================================
 function updateBullets(){
-  for(let i = bullets.length - 1; i >= 0; i--){
+  for(let i=bullets.length-1;i>=0;i--){
     const b = bullets[i];
     b.x += b.vx;
     b.y += b.vy;
 
-    if(b.x < -50 || b.x > width+50 || b.y < -50 || b.y > height+50){
+    if(b.x<-50 || b.x>width+50 || b.y<-50 || b.y>height+50){
       bullets.splice(i,1);
       continue;
     }
 
     let hit = false;
-    for(let ti = 0; ti < targets.length; ti++){
+    for(let ti=0;ti<targets.length;ti++){
       const t = targets[ti];
       if(!t.alive) continue;
-      const d = dist(b.x, b.y, t.x, t.currentY);
-      if(d <= t.size * 0.5){
-        t.alive = false;
+      const d = dist(b.x,b.y,t.x,t.currentY);
+      if(d <= t.size*0.5){
+        t.alive=false;
         bullets.splice(i,1);
-        if(doroRemaining > 0) doroRemaining--;
-        hit = true;
+        if(doroRemaining>0) doroRemaining--;
+        hit=true;
         break;
       }
     }
@@ -290,88 +317,82 @@ function drawBullets(){
   noStroke();
   fill(255,230,130);
   for(let b of bullets){
-    ellipse(b.x, b.y, 12);
+    ellipse(b.x,b.y,12);
     push();
     stroke(255,220,130,180);
     strokeWeight(2);
-    line(b.x, b.y, b.x - b.vx*0.04, b.y - b.vy*0.04);
+    line(b.x,b.y,b.x-b.vx*0.04,b.y-b.vy*0.04);
     pop();
   }
 }
 
-// ==================== Crosshair & UI ====================
+// ======================================================
+// ★ 新クロスヘア（撃つと広がる）
+// ======================================================
 function drawCrosshair(){
+  // スプレッドが自然に戻る
+  crosshairSpread = lerp(crosshairSpread, crosshairTargetSpread, 0.15);
+  crosshairTargetSpread *= 0.85;
+
+  const cx = mouseX;
+  const cy = mouseY;
+
   push();
-  stroke(255,220);
+  stroke(255);
   strokeWeight(2);
-  line(mouseX - 10, mouseY, mouseX + 10, mouseY);
-  line(mouseX, mouseY - 10, mouseX, mouseY + 10);
-  noFill();
-  circle(mouseX, mouseY, 18);
+
+  // 縦線（上下に開く）
+  line(cx, cy - 15 - crosshairSpread, cx, cy - 5);
+  line(cx, cy + 5, cx, cy + 15 + crosshairSpread);
+
+  // 横線（左右に開く）
+  line(cx - (15 + crosshairSpread), cy, cx - 5, cy);
+  line(cx + 5, cy, cx + (15 + crosshairSpread), cy);
+
   pop();
 }
 
+// ======================================================
+// UI（残弾バー & カウンター）
+// ======================================================
 function drawUI(){
   push();
   fill(255);
   textSize(13);
-  text("Hold mouse: shoot. Bullets hit targets or leave screen.", 12, 20);
+  text("Hold mouse: shoot / Auto reload", 12, 20);
   textSize(16);
   text(`DORO残り ${doroRemaining}匹`, 12, 50);
   pop();
 
- // --------------------
-// 残弾バー + 三桁カウンター（クロスヘア左横）
-// --------------------
+  // ----- 残弾バー -----
+  const barWidth = 50;
+  const barHeight = 12;
 
-// クロスヘアの左横に
-const barWidth = 50;
-const barHeight = 12;
+  const barX = mouseX - 70;
+  const barY = mouseY - barHeight/2;
 
-const barX = mouseX - 70;   // クロスヘアの左 70px
-const barY = mouseY - barHeight / 2;  // クロスヘア中心と縦位置を合わせる
+  let barColor;
+  if(isReloading || ammo <= 0) barColor = color(150);
+  else if(ammo <= maxAmmo/2)  barColor = color(255,0,0);
+  else barColor = color(255);
 
-// 色判定
-let barColor;
-if(isReloading || ammo <= 0){
-  barColor = color(150); // 灰色
-} else if(ammo <= maxAmmo/2){
-  barColor = color(255,0,0); // 赤
-} else {
-  barColor = color(255); // 白
-}
-
-// 背景
-push();
-noStroke();
-fill(80);
-rect(barX, barY, barWidth, barHeight, 4);
-
-// 残量バー
-fill(barColor);
-rect(barX, barY, (ammo/maxAmmo)*barWidth, barHeight, 4);
-pop();
-
-// 三桁カウンター（バーの真下）
-push();
-textSize(16);
-textAlign(LEFT, TOP);
-fill(barColor);
-text(String(ammo).padStart(3,'0'), barX, barY + barHeight + 4);
-pop();
+  // 背景
   push();
   noStroke();
-  fill(100);
+  fill(80);
   rect(barX, barY, barWidth, barHeight, 4);
+
+  // 残量バー
   fill(barColor);
   rect(barX, barY, (ammo/maxAmmo)*barWidth, barHeight, 4);
   pop();
 
+  // 三桁カウンター
   push();
   textSize(16);
-  textAlign(CENTER, BOTTOM);
+  textAlign(LEFT, TOP);
   fill(barColor);
-  text(`${String(ammo).padStart(3,'0')}/${String(maxAmmo).padStart(3,'0')}`, barX + barWidth/2, barY - 2);
+  text(String(ammo).padStart(3,'0'), barX, barY + barHeight + 4);
   pop();
 
   // クリアタイム
@@ -385,7 +406,9 @@ pop();
   }
 }
 
-// ==================== Table drawing ====================
+// ======================================================
+// Table
+// ======================================================
 function drawTable(){
   noStroke();
   fill(145,100,60);
@@ -397,23 +420,25 @@ function drawTable(){
   );
 }
 
-// ==================== Mouse pressed ====================
+// ======================================================
+// Mouse
+// ======================================================
 function mousePressed(){
-  if(screenState === "start"){
-    if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
-       mouseY > height/2 - 25 && mouseY < height/2 + 25){
-      screenState = "game";
+  if(screenState==="start"){
+    if(mouseX>width/2-90 && mouseX<width/2+90 &&
+       mouseY>height/2-25 && mouseY<height/2+25){
+      screenState="game";
       initScene();
       return;
     }
-    if(mouseX > width/2 - 90 && mouseX < width/2 + 90 &&
-       mouseY > height/2 + 55 && mouseY < height/2 + 105){
-      screenState = "instructions";
+    if(mouseX>width/2-90 && mouseX<width/2+90 &&
+       mouseY>height/2+55 && mouseY<height/2+105){
+      screenState="instructions";
       return;
     }
-  } else if(screenState === "instructions"){
-    screenState = "start";
-  } else if(screenState === "game"){
+  } else if(screenState==="instructions"){
+    screenState="start";
+  } else if(screenState==="game"){
     handleShooting();
   }
 }
