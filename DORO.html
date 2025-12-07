@@ -46,10 +46,12 @@ let gameCleared = false;
 // ゲーム状態
 let gameStarted = false;
 
+// 描画用
 let lanes = [];
 let targets = [];
 let obstacles = [];
 let bullets = [];
+let targetImg;
 
 // =======================
 // p5.js setup
@@ -57,6 +59,7 @@ let bullets = [];
 function setup(){
   createCanvas(900, 600);
   noCursor();
+  targetImg = loadImage("images/doro.png"); // ターゲット画像
 }
 
 // =======================
@@ -92,14 +95,15 @@ function draw(){
 function drawStartScreen(){
   push();
   fill(255);
-  textAlign(CENTER, CENTER); // 横中央・縦中央に揃える
+  textAlign(CENTER, CENTER); // 横・縦中央
   textSize(48);
-  text("DOROゲーム", width/2, height/2 - 40); // 上側にタイトル
+  text("DOROゲーム", width/2, height/2 - 40);
   textSize(24);
-  text("クリックでスタート", width/2, height/2 + 40); // 下側に開始指示
+  text("クリックでスタート", width/2, height/2 + 40);
   pop();
 }
-// ==================== Table & lanes ====================
+
+// ==================== Scene initialization ====================
 function initScene(){
   lanes = [];
   targets = [];
@@ -134,8 +138,8 @@ function initScene(){
         lane: i,
         baseX: xPos,
         x: xPos,
-        baseY: y,
         currentY: y,
+        baseY: y,
         size,
         dir: random([-1,1]),
         speed,
@@ -202,22 +206,19 @@ function updateTargets(){
 }
 
 function drawTargets(){
-  noStroke();
+  imageMode(CENTER);
   for(let t of targets){
     if(!t.alive) continue;
     if(t.isHidden) continue;
 
+    // 影（オプション）
     push();
-    fill(0,0,0,40);
-    ellipse(t.x + 4, t.currentY + 6, t.size * 0.95);
+    tint(0,0,0,100);
+    image(targetImg, t.x + 4, t.currentY + 6, t.size, t.size);
     pop();
 
-    fill(250,120,120);
-    ellipse(t.x, t.currentY, t.size);
-    fill(255);
-    ellipse(t.x, t.currentY, t.size * 0.58);
-    fill(220,20,20);
-    ellipse(t.x, t.currentY, t.size * 0.28);
+    // 本体
+    image(targetImg, t.x, t.currentY, t.size, t.size);
   }
 }
 
