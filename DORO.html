@@ -165,3 +165,474 @@ function adjustUI() {
     rankingButton.hide();
   }
 }
+// ================================
+//  draw
+// ================================
+function draw() {
+  background(36, 42, 64);
+
+  if (screenState === "start") {
+    cursor();
+    adjustUI();
+    drawStartScreen();
+  } else if (screenState === "instructions") {
+    cursor();
+    drawInstructionsScreen();
+  } else if (screenState === "game") {
+    noCursor();
+    drawGame();
+  } else if (screenState === "clear") {
+    cursor();
+    drawClearScreen();
+  } else if (screenState === "ranking") {
+    cursor();
+    drawRankingScreen();
+  }
+}
+
+// ================================
+//  Start Screen
+// ================================
+function drawStartScreen() {
+  push();
+  fill(255);
+  textAlign(CENTER);
+  textSize(36 * scaleRate);
+  text("DOROゲーム", W / 2, H * 0.25);
+
+  textSize(16 * scaleRate);
+  text("プレイヤー名を入力してください", W / 2, H * 0.35);
+
+  text(`ローカルハイスコア: ${highScore}`, W / 2, H - 40 * scaleRate);
+  pop();
+}
+
+// ================================
+function drawInstructionsScreen() {
+  fill(255);
+  textAlign(CENTER);
+  textSize(36 * scaleRate);
+  text("プレイ方法", W / 2, H * 0.35);
+
+  textSize(20 * scaleRate);
+  text("DOROを素早く倒したら勝ち！", W / 2, H * 0.45);
+
+  textSize(16 * scaleRate);
+  text("タップで戻る", W / 2, H * 0.6);
+}
+
+// ================================
+function drawGame() {
+  drawTable();
+  updateTargets();
+  drawTargets();
+  updateBullets();
+  drawBullets();
+  drawCrosshair();
+  handleShooting();
+  drawUI();
+
+  if (!gameCleared && doroRemaining <= 0) {
+    clearTime = (millis() - startTime) / 1000;
+
+    longShootSound.stop();
+    isLongSoundPlaying = false;
+
+    gameCleared = true;
+    computeScoreAndSave();
+
+    if (playerName.length > 0) {
+      sendScoreToFirebase({
+        name: playerName,
+        score: lastScore,
+        time: Number(clearTime.toFixed(3)),
+        miss: missedShots,
+        createdAt: Date.now()
+      });
+    }
+    screenState = "clear";
+  }
+}
+
+// ================================
+function initScene() {
+  lanes = [];
+  targets = [];
+  bullets = [];
+
+  ammo = maxAmmo;
+  isReloading = false;
+  lastFireTime = 0;
+  gameCleared = false;
+  missedShots = 0;
+  isLongSoundPlaying = false;
+
+  doroRemaining = 100;
+
+  // テーブル位置計算
+  const topY = H * 0.15;
+  const bottomY = H * 0.75;
+  const leftX = W * 0.2;
+  const rightX = W * 0.8;
+
+  let y = topY + 20 * scaleRate;
+
+  for (let i = 0; i < laneCount; i++) {
+    const t = i / (laneCount - 1);
+    const gap = lerp(30 * scaleRate, 110 * scaleRate, t);
+    const size = lerp(36 * scaleRate, 85 * scaleRate, t);
+    const speed = lerp(1.4, 3.6, t);
+
+    const laneY = y;
+
+    lanes.push({
+      y: laneY,
+      leftX,
+      rightX,
+      size,
+      speed
+    });
+
+    for (let j = 0; j < Math.ceil(doroRemaining / laneCount); j++) {
+      const xPos = random(leftX + 40, rightX - 40);
+      targets.push({
+        lane: i,
+        x: xPos,
+        baseY: laneY,
+        currentY: laneY,
+        size,
+        alive: true,
+        vx: 0,
+        vy: 0,
+        dir: random([-1, 1]),
+        speed,
+        bounceAmp: 25 * scaleRate,
+        bouncePhase: random(TWO_PI),
+        bounceFreq: random(0.05, 0.11)
+      });
+    }
+
+    y += gap;
+  }
+
+  startTime = millis();
+}
+
+// ================================
+function updateTargets() {
+  for (let t of targets) {
+    if (!t.alive) continue;
+
+    const L = lanes[t.lane];
+    const d = dist(mouseX, mouseY, t.x, t.baseY);
+
+    if (d < 200 * scaleRate) {
+      const ang = atan2(t.baseY - mouseY, t.x - mouseX);
+      t.vx += cos(ang) * 0.3;
+      t.vy += sin(ang) * 0.1;
+    } else {
+      t.vx += t.speed * t.dir * 0.06;
+    }
+
+    t.vx = constrain(t.vx + random(-0.04, 0.04), -4, 4);
+    t.vy = constrain(t.vy, -1.2, 1.2);
+
+    t.x += t.vx;
+    t.baseY += t.vy;
+    t.baseY = lerp(t.baseY, L.y, 0.04);
+
+    // 端の巻き戻り
+    if (t.x < L.leftX) t.x = L.rightX;
+    if (t.x > L.rightX) t.x = L.leftX;
+
+    const bounce = sin(frameCount * t.bounceFreq + t.bouncePhase) * t.bounceAmp;
+    t.currentY = t.baseY - abs(bounce);
+  }
+}
+
+// ================================
+function drawTargets() {
+  imageMode(CENTER);
+  for (let t of targets) {
+    if (!t.alive) continue;
+
+    push();
+    translate(t.x, t.currentY);
+
+    if (t.vx > 0) scale(-1, 1);
+
+    image(targetImg, 0, 0, t.size, t.size);
+    pop();
+  }
+}
+
+// ================================
+function fireBullet() {
+  const gunX = W / 2;
+  const gunY = H - 20 * scaleRate;
+
+  const dx = mouseX - gunX;
+  const dy = mouseY - gunY;
+  const d = sqrt(dx * dx + dy * dy) || 1;
+
+  bullets.push({
+    x: gunX,
+    y: gunY,
+    vx: (dx / d) * (20 * scaleRate),
+    vy: (dy / d) * (20 * scaleRate)
+  });
+}
+
+// ================================
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    let b = bullets[i];
+    b.x += b.vx;
+    b.y += b.vy;
+
+    if (b.x < -50 || b.x > W + 50 || b.y < -50 || b.y > H + 50) {
+      missedShots++;
+      bullets.splice(i, 1);
+      continue;
+    }
+
+    for (let t of targets) {
+      if (!t.alive) continue;
+
+      const d = dist(b.x, b.y, t.x, t.currentY);
+      if (d <= t.size * 0.5) {
+        t.alive = false;
+        bullets.splice(i, 1);
+        doroRemaining--;
+        break;
+      }
+    }
+  }
+}
+
+// ================================
+function drawBullets() {
+  fill(255, 230, 130);
+  noStroke();
+  for (const b of bullets) ellipse(b.x, b.y, 12 * scaleRate);
+}
+
+// ================================
+function drawCrosshair() {
+  crosshairSpread = lerp(crosshairSpread, crosshairTargetSpread, 0.15);
+  crosshairTargetSpread *= 0.85;
+
+  const cx = mouseX;
+  const cy = mouseY;
+
+  stroke(255);
+  strokeWeight(2 * scaleRate);
+
+  line(cx, cy - 20 * scaleRate - crosshairSpread, cx, cy - 5);
+  line(cx, cy + 5, cx, cy + 20 * scaleRate + crosshairSpread);
+  line(cx - (20 * scaleRate + crosshairSpread), cy, cx - 5, cy);
+  line(cx + 5, cy, cx + (20 * scaleRate + crosshairSpread), cy);
+}
+
+// ================================
+function drawUI() {
+  fill(255);
+  textSize(16 * scaleRate);
+  text(`残り ${doroRemaining}`, 10, 40 * scaleRate);
+
+  const barW = 120 * scaleRate;
+  const barH = 14 * scaleRate;
+  const barX = W - barW - 20;
+  const barY = 40;
+
+  fill(80);
+  rect(barX, barY, barW, barH, 4);
+
+  const ratio = ammo / maxAmmo;
+  fill(255);
+  rect(barX, barY, barW * ratio, barH, 4);
+
+  fill(255);
+  text(`${ammo}`, barX, barY + barH + 16);
+}
+
+// ================================
+function handleShooting() {
+  if (!mouseIsPressed || ammo <= 0) {
+    if (isLongSoundPlaying) {
+      longShootSound.stop();
+      isLongSoundPlaying = false;
+    }
+
+    if (!isReloading && ammo < maxAmmo) {
+      isReloading = true;
+      reloadSound.play();
+      setTimeout(() => {
+        ammo = maxAmmo;
+        isReloading = false;
+      }, reloadTime);
+    }
+    return;
+  }
+
+  if (!isLongSoundPlaying) {
+    longShootSound.play();
+    isLongSoundPlaying = true;
+  }
+
+  const now = millis();
+  if (now - lastFireTime > fireInterval && !isReloading) {
+    fireBullet();
+    lastFireTime = now;
+    ammo--;
+    crosshairTargetSpread = 12;
+  }
+}
+
+// ================================
+function computeScoreAndSave() {
+  const timePenalty = Math.floor(clearTime * 50);
+  const missPenalty = missedShots * 20;
+
+  lastScore = max(0, BASE_SCORE - timePenalty - missPenalty);
+
+  if (lastScore > highScore) {
+    highScore = lastScore;
+    localStorage.setItem(HIGH_KEY, String(highScore));
+  }
+}
+
+// ================================
+function drawClearScreen() {
+  textAlign(CENTER);
+
+  fill(255);
+  textSize(48 * scaleRate);
+  text("CLEAR!", W / 2, H * 0.25);
+
+  textSize(20 * scaleRate);
+  text(`タイム: ${clearTime.toFixed(2)} 秒`, W / 2, H * 0.35);
+  text(`外した弾: ${missedShots}`, W / 2, H * 0.40);
+
+  textSize(32 * scaleRate);
+  text(`スコア: ${lastScore}`, W / 2, H * 0.52);
+
+  textSize(18 * scaleRate);
+  text(`ハイスコア: ${highScore}`, W / 2, H * 0.60);
+
+  fill(200, 230, 255);
+  rectMode(CENTER);
+
+  rect(W / 2 - 140 * scaleRate, H * 0.78, 180 * scaleRate, 50 * scaleRate, 12);
+  fill(0);
+  textSize(20 * scaleRate);
+  text("リトライ", W / 2 - 140 * scaleRate, H * 0.78);
+
+  fill(200, 230, 255);
+  rect(W / 2 + 140 * scaleRate, H * 0.78, 180 * scaleRate, 50 * scaleRate, 12);
+  fill(0);
+  text("タイトルへ", W / 2 + 140 * scaleRate, H * 0.78);
+}
+
+// ================================
+function fetchRanking() {
+  rankingList = [];
+  screenState = "ranking";
+
+  db.ref("scores")
+    .orderByChild("score")
+    .limitToLast(10)
+    .once("value", snap => {
+      const d = snap.val();
+      if (!d) return;
+      rankingList = Object.keys(d).map(k => ({ ...d[k], key: k }));
+      rankingList.sort((a, b) => b.score - a.score);
+    });
+}
+
+// ================================
+function drawRankingScreen() {
+  fill(255);
+  textAlign(CENTER);
+
+  textSize(36 * scaleRate);
+  text("ランキング TOP10", W / 2, H * 0.18);
+
+  let y = H * 0.28;
+  textSize(18 * scaleRate);
+
+  for (let i = 0; i < 10; i++) {
+    if (i < rankingList.length) {
+      const r = rankingList[i];
+      text(
+        `${i + 1}. ${r.name} / Score:${r.score} / Time:${r.time}s / Miss:${r.miss}`,
+        W / 2,
+        y
+      );
+    } else {
+      text(`${i + 1}. ---`, W / 2, y);
+    }
+    y += 32 * scaleRate;
+  }
+
+  // 戻る
+  fill(200, 230, 255);
+  rect(W / 2, H * 0.86, 220 * scaleRate, 50 * scaleRate, 10);
+  fill(0);
+  textSize(22 * scaleRate);
+  text("戻る", W / 2, H * 0.86);
+}
+
+// ================================
+function sendScoreToFirebase(payload) {
+  db.ref("scores").push(payload);
+}
+
+// ================================
+function mousePressed() {
+  if (screenState === "instructions") {
+    screenState = "start";
+    return;
+  }
+
+  if (screenState === "ranking") {
+    screenState = "start";
+    return;
+  }
+
+  if (screenState === "clear") {
+    const retryX = W / 2 - 140 * scaleRate;
+    const titleX = W / 2 + 140 * scaleRate;
+    const y = H * 0.78;
+
+    // リトライ
+    if (dist(mouseX, mouseY, retryX, y) < 120 * scaleRate) {
+      initScene();
+      screenState = "game";
+      return;
+    }
+
+    // タイトル
+    if (dist(mouseX, mouseY, titleX, y) < 120 * scaleRate) {
+      screenState = "start";
+      adjustUI();
+      return;
+    }
+  }
+}
+
+// ================================
+function drawTable() {
+  noStroke();
+  fill(145, 100, 60);
+
+  const topY = H * 0.15;
+  const bottomY = H * 0.75;
+  const leftX = W * 0.2;
+  const rightX = W * 0.8;
+
+  quad(leftX, topY, rightX, topY, rightX, bottomY, leftX, bottomY);
+}
+</script>
+</body>
+</html>
