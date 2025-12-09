@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<title>DORO射撃ゲームｚ（完全統合版：ランキング対応）</title>
+<title>DORO射撃ゲーム（完全統合版：ランキング対応）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!-- p5.js & p5.sound -->
@@ -43,62 +43,63 @@ let lanes=[],targets=[],bullets=[],targetImg=null;
 const BASE_SCORE=10000;
 let missedShots=0,lastScore=0,highScore=0;
 const HIGH_KEY="doro_highscore";
+
 let playerName="";
-let nameInput,startButton,rankingButton;
 let rankingList=[];
+
+// UI elements
+let nameInput,startButton,rankingButton;
 
 // preload
 function preload(){
-  longShootSound=loadSound("sound/shot.mp3",
-    ()=>console.log("longShootSound loaded"),
-    (e)=>console.warn("longShootSound load failed", e)
-  );
-  reloadSound=loadSound("sound/reload.mp3",
-    ()=>console.log("reloadSound loaded"),
-    (e)=>console.warn("reloadSound load failed", e)
-  );
-  targetImg=loadImage("images/doro-removebg-preview.png",
-    ()=>console.log("targetImg loaded"),
-    (e)=>console.warn("targetImg load failed", e)
-  );
+  longShootSound=loadSound("sound/shot.mp3");
+  reloadSound=loadSound("sound/reload.mp3");
+  targetImg=loadImage("images/doro-removebg-preview.png");
 }
 
 function setup(){
   createCanvas(900,600);
 
+  // local highscore
   const stored=localStorage.getItem(HIGH_KEY);
-  highScore=stored?parseInt(stored,10)||0:0;
+  highScore = stored ? parseInt(stored,10)||0 : 0;
 
-  nameInput=createInput("");
+  // ---- UI Elements ----
+  nameInput = createInput("");
   nameInput.attribute("placeholder","プレイヤー名");
   nameInput.position(width/2-180,height/2-22);
   nameInput.size(220,24);
   nameInput.addClass("p5dom");
-  // use changed() to reliably capture final input
-  nameInput.changed(()=>{ playerName=nameInput.value().trim(); updateStartButtonState(); });
 
-  startButton=createButton("スタート");
+  // ★ 入力するたびに更新（修正版）★
+  nameInput.input(()=>{
+    playerName = nameInput.value().trim();
+    updateStartButtonState();
+  });
+
+  startButton = createButton("スタート");
   startButton.addClass("btn p5dom");
   startButton.position(width/2+10,height/2-22);
   startButton.mousePressed(()=>{
     playerName = nameInput.value().trim();
     if(playerName.length>0){
-      screenState="game"; doroRemaining=100; initScene();
+      screenState="game";
+      doroRemaining=100;
+      initScene();
     }
   });
 
-  rankingButton=createButton("ランキング");
+  rankingButton = createButton("ランキング");
   rankingButton.addClass("btn p5dom");
   rankingButton.position(width/2+110,height/2-22);
   rankingButton.mousePressed(()=>{ fetchRanking(); });
 
-  playerName=nameInput.value().trim();
   updateStartButtonState();
 }
 
 function updateStartButtonState(){
   if(!startButton) return;
-  startButton.attribute("disabled",playerName.length>0?null:true);
+  startButton.attribute("disabled", playerName.length>0 ? null : true);
 }
 
 function draw(){
@@ -114,7 +115,7 @@ function draw(){
 
   if(screenState==="instructions"){ cursor(); drawInstructionsScreen(); }
   else if(screenState==="game"){ noCursor(); drawGame(); }
-  else if(screenState==="clear"){ cursor(); drawClearScreen(); } // show cursor on clear so player can click
+  else if(screenState==="clear"){ cursor(); drawClearScreen(); }
   else if(screenState==="ranking"){ cursor(); drawRankingScreen(); }
 }
 
@@ -122,22 +123,20 @@ function drawStartScreen(){
   push();
   fill(255); textSize(32);
   textAlign(LEFT);
-  text("DOROゲーム", 24, 64);
-  textSize(14); fill(200);
-  text("プレイヤー名を入力してください", 24, 94);
-  // position inputs nicely
-  nameInput.position(width/2-180,height/2-22);
-  startButton.position(width/2+10,height/2-22);
-  rankingButton.position(width/2+110,height/2-22);
+  text("DOROゲーム", 24,64);
 
-  // show local highscore
-  fill(255); textSize(14); text(`ローカルハイスコア: ${highScore}`, 24, height-30);
+  fill(200); textSize(14);
+  text("プレイヤー名を入力してください", 24, 94);
+
+  // local highscore
+  fill(255); textSize(14);
+  text(`ローカルハイスコア: ${highScore}`,24,height-30);
   pop();
 }
 
 function drawInstructionsScreen(){
   push(); fill(255); textAlign(CENTER);
-  textSize(36); text("プレイ方法", width/2,height/2-60);
+  textSize(36); text("プレイ方法", width/2, height/2-60);
   textSize(24); text("DOROを素早く倒したら勝ち！", width/2,height/2);
   textSize(18); text("クリックで戻る", width/2,height/2+60);
   pop();
@@ -153,27 +152,34 @@ function drawGame(){
 
   if(!gameCleared && doroRemaining<=0){
     clearTime=(millis()-startTime)/1000;
-    gameCleared=true;
-    try{ if(longShootSound && isLongSoundPlaying) longShootSound.stop(); }catch(e){}
+
+    // stop sound
+    try{ longShootSound.stop(); }catch(e){}
     isLongSoundPlaying=false;
 
+    gameCleared=true;
     computeScoreAndSave();
+
+    // send to firebase
     if(playerName.length>0){
       sendScoreToFirebase({
-        name:playerName, score:lastScore,
+        name:playerName,
+        score:lastScore,
         time:Number(clearTime.toFixed(3)),
         miss:missedShots,
         createdAt:Date.now()
-      }).catch(e=>console.warn("Firebase write failed", e));
+      });
     }
+
     screenState="clear";
   }
 }
 
 function initScene(){
   lanes=[]; targets=[]; bullets=[];
-  ammo=maxAmmo; isReloading=false; lastFireTime=0;
-  gameCleared=false; isLongSoundPlaying=false;
+  ammo=maxAmmo; isReloading=false;
+  lastFireTime=0; gameCleared=false;
+  isLongSoundPlaying=false;
   missedShots=0; lastScore=0;
 
   let y=tableTopY+12;
@@ -185,29 +191,36 @@ function initScene(){
 
     const leftX=map(y,tableTopY,tableBottomY,tableTopLeftX,tableBottomLeftX);
     const rightX=map(y,tableTopY,tableBottomY,tableTopRightX,tableBottomRightX);
+
     lanes.push({y,leftX,rightX,size,speed});
 
     const amp=lerp(22,30,t),phase=random(TWO_PI);
+
     for(let j=0;j<Math.ceil(doroRemaining/laneCount);j++){
-      const xPos=random(leftX+20,rightX-20);
+      const xPos=random(leftX+20, rightX-20);
       targets.push({
-        lane:i, baseX:xPos,x:xPos,currentY:y,baseY:y,
-        size,dir:random([-1,1]),speed,
-        alive:true,
-        bounceAmp:amp,bouncePhase:phase,bounceFreq:lerp(0.06,0.12,random()),
+        lane:i, baseX:xPos,x:xPos,
+        currentY:y,baseY:y,
+        size,dir:random([-1,1]),
+        speed,alive:true,
+        bounceAmp:amp,bouncePhase:phase,
+        bounceFreq:lerp(0.06,0.12,random()),
         vx:0,vy:0
       });
     }
     y+=gap;
   }
+
   startTime=millis();
 }
 
 function updateTargets(){
   for(let t of targets){
     if(!t.alive) continue;
+
     const L=lanes[t.lane];
-    const d=dist(mouseX,mouseY,t.x,t.baseY);
+    const d = dist(mouseX,mouseY,t.x,t.baseY);
+
     if(d<200){
       const ang=atan2(t.baseY-mouseY,t.x-mouseX);
       t.vx+=cos(ang)*0.35; t.vy+=sin(ang)*0.12;
@@ -221,14 +234,15 @@ function updateTargets(){
     t.baseY+=t.vy;
     t.baseY=lerp(t.baseY,L.y,0.04);
 
-    const Lb=L.leftX+12,Rb=L.rightX-12;
-    if(t.x<Lb)t.x=Rb-2;
-    if(t.x>Rb)t.x=Lb+2;
+    const Lb=L.leftX+12, Rb=L.rightX-12;
+    if(t.x<Lb) t.x=Rb-2;
+    if(t.x>Rb) t.x=Lb+2;
 
-    const bounce=sin(frameCount*t.bounceFreq+t.bouncePhase)*t.bounceAmp;
-    t.currentY=t.baseY-Math.abs(bounce);
+    const bounce = sin(frameCount*t.bounceFreq+t.bouncePhase)*t.bounceAmp;
+    t.currentY = t.baseY - Math.abs(bounce);
   }
 }
+
 function drawTargets(){
   imageMode(CENTER);
   for(let t of targets){
@@ -242,18 +256,27 @@ function drawTargets(){
 }
 
 function fireBullet(){
-  const ox=width/2,oy=height-10;
-  const dx=mouseX-ox,dy=mouseY-oy;
+  const ox=width/2, oy=height-10;
+  const dx=mouseX-ox, dy=mouseY-oy;
   const d=sqrt(dx*dx+dy*dy)||1;
-  bullets.push({x:ox,y:oy,vx:(dx/d)*20,vy:(dy/d)*20});
+
+  bullets.push({
+    x:ox,y:oy,
+    vx:(dx/d)*20, vy:(dy/d)*20
+  });
 }
+
 function updateBullets(){
   for(let i=bullets.length-1;i>=0;i--){
     const b=bullets[i];
     b.x+=b.vx; b.y+=b.vy;
+
     if(b.x<-50||b.x>width+50||b.y<-50||b.y>height+50){
-      missedShots++; bullets.splice(i,1); continue;
+      missedShots++;
+      bullets.splice(i,1);
+      continue;
     }
+
     for(let t of targets){
       if(!t.alive) continue;
       if(dist(b.x,b.y,t.x,t.currentY)<=t.size*0.5){
@@ -265,13 +288,20 @@ function updateBullets(){
     }
   }
 }
-function drawBullets(){ fill(255,230,130); noStroke(); for(let b of bullets) ellipse(b.x,b.y,12); }
+
+function drawBullets(){
+  fill(255,230,130);
+  noStroke();
+  for(let b of bullets) ellipse(b.x,b.y,12);
+}
 
 function drawCrosshair(){
   crosshairSpread=lerp(crosshairSpread,crosshairTargetSpread,0.15);
   crosshairTargetSpread*=0.85;
-  const cx=mouseX,cy=mouseY;
+
   stroke(255); strokeWeight(2);
+  const cx=mouseX,cy=mouseY;
+
   line(cx,cy-20-crosshairSpread,cx,cy-5);
   line(cx,cy+5,cx,cy+20+crosshairSpread);
   line(cx-20-crosshairSpread,cy,cx-5,cy);
@@ -279,15 +309,24 @@ function drawCrosshair(){
 }
 
 function drawUI(){
-  fill(255); textSize(16); text(`DORO残り ${doroRemaining}匹`,10,50);
+  fill(255); textSize(16);
+  text(`DORO残り ${doroRemaining}匹`,10,50);
+
   const barX=mouseX-70,barY=mouseY-20,barW=60,barH=10;
   let barColor=color(255);
-  if(isReloading||ammo<=0)barColor=color(150);
-  else if(ammo<=maxAmmo/2)barColor=color(255,0,0);
-  noStroke(); fill(80); rect(barX,barY,barW,barH,4);
-  fill(barColor); rect(barX,barY,(ammo/maxAmmo)*barW,barH,4);
-  fill(barColor); textSize(14); text(String(ammo).padStart(3,"0"),barX,barY+barH+14);
-  fill(255); text(`外した弾: ${missedShots}`,10,70);
+  if(isReloading||ammo<=0) barColor=color(150);
+  else if(ammo<=maxAmmo/2) barColor=color(255,0,0);
+
+  noStroke(); fill(80);
+  rect(barX,barY,barW,barH,4);
+  fill(barColor);
+  rect(barX,barY,(ammo/maxAmmo)*barW,barH,4);
+
+  fill(barColor); textSize(14);
+  text(String(ammo).padStart(3,"0"),barX,barY+barH+14);
+
+  fill(255);
+  text(`外した弾: ${missedShots}`,10,70);
 }
 
 function handleShooting(){
@@ -298,71 +337,152 @@ function handleShooting(){
     }
     if(!isReloading&&ammo<maxAmmo){
       isReloading=true;
-      try{ if(reloadSound && reloadSound.isLoaded && reloadSound.isLoaded()) reloadSound.play(); else reloadSound && reloadSound.play && reloadSound.play(); }catch(e){}
-      setTimeout(()=>{ammo=maxAmmo;isReloading=false;},reloadTime);
+      try{ reloadSound.play(); }catch(e){}
+      setTimeout(()=>{ ammo=maxAmmo; isReloading=false; }, reloadTime);
     }
     return;
   }
+
   if(!isLongSoundPlaying){
-    try{ if(getAudioContext().state !== "running") getAudioContext().resume(); }catch(e){}
-    try{ longShootSound.play(); isLongSoundPlaying=true; }catch(e){ console.warn("play longShootSound failed", e); }
+    try{ longShootSound.play(); }catch(e){}
+    isLongSoundPlaying=true;
   }
+
   const now=millis();
   if(now-lastFireTime>fireInterval&&!isReloading){
-    fireBullet(); lastFireTime=now; ammo--; crosshairTargetSpread=12;
+    fireBullet();
+    lastFireTime=now;
+    ammo--;
+    crosshairTargetSpread=12;
   }
 }
 
 function computeScoreAndSave(){
-  const timePenalty=clearTime*50;
+  const timePenalty=Math.floor(clearTime*50);
   const missPenalty=missedShots*20;
-  lastScore=Math.max(0,Math.floor(BASE_SCORE-timePenalty-missPenalty));
-  if(lastScore>highScore){ highScore=lastScore; localStorage.setItem(HIGH_KEY,String(highScore)); }
+
+  lastScore=Math.max(0,BASE_SCORE-timePenalty-missPenalty);
+
+  if(lastScore>highScore){
+    highScore=lastScore;
+    localStorage.setItem(HIGH_KEY,String(highScore));
+  }
 }
 
-async function sendScoreToFirebase(payload){
-  return db.ref("scores").push(payload);
+function drawClearScreen(){
+  push();
+  fill(255);
+  textAlign(CENTER);
+  textSize(56);
+  text("CLEAR!", width/2, height/2 - 120);
+
+  textSize(20);
+  text(`クリア時間: ${clearTime.toFixed(2)} 秒`, width/2, height/2 - 60);
+  text(`外した弾: ${missedShots} 発`, width/2, height/2 - 30);
+
+  const timePenalty=Math.floor(clearTime*50);
+  const missPenalty=missedShots*20;
+
+  textSize(18);
+  text(`計算: ${BASE_SCORE} - (時間 ${Math.floor(clearTime)}s × 50) - (外し ${missedShots} × 20)`,
+       width/2, height/2 + 10);
+
+  textSize(36);
+  text(`スコア: ${lastScore}`, width/2, height/2 + 60);
+
+  textSize(18);
+  text(`ハイスコア: ${highScore}`, width/2, height/2 + 100);
+
+  fill(200,230,255);
+  rectMode(CENTER);
+  rect(width/2 - 120, height/2 + 150, 160, 44, 8);
+  fill(20);
+  text("リトライ", width/2 - 120, height/2 + 150);
+
+  fill(200,230,255);
+  rect(width/2 + 120, height/2 + 150, 160, 44, 8);
+  fill(20);
+  text("タイトルへ", width/2 + 120, height/2 + 150);
+  pop();
 }
 
 function fetchRanking(){
-  screenState="ranking"; rankingList=[];
-  db.ref("scores").orderByChild("score").limitToLast(10).once("value",snap=>{
-    const d=snap.val(); if(!d) return;
-    rankingList=Object.keys(d).map(k=>({...d[k],key:k}));
+  rankingList=[];
+  screenState="ranking";
+
+  db.ref("scores").orderByChild("score").limitToLast(10).once("value", snap=>{
+    const d=snap.val();
+    if(!d) return;
+    rankingList = Object.keys(d).map(k=>({...d[k], key:k}));
     rankingList.sort((a,b)=>b.score-a.score);
-  }, err=>{ console.warn("fetchRanking err", err); });
+  });
 }
 
 function drawRankingScreen(){
-  fill(255); textSize(32); textAlign(CENTER);
-  text("ランキング TOP10",width/2,80);
-  textSize(16); let y=130;
+  fill(255);
+  textAlign(CENTER);
+  textSize(32);
+  text("ランキング TOP10", width/2, 80);
+
+  textSize(16);
+  let y=130;
+
   for(let i=0;i<10;i++){
     if(i<rankingList.length){
       let r=rankingList[i];
-      text(`${i+1}. ${r.name}  Score:${r.score}  Time:${r.time}s  Miss:${r.miss}`,width/2,y);
-    }else{
-      text(`${i+1}. ---`,width/2,y);
+      text(`${i+1}. ${r.name}  Score:${r.score}  Time:${r.time}s  Miss:${r.miss}`, width/2, y);
+    } else {
+      text(`${i+1}. ---`, width/2, y);
     }
     y+=30;
   }
-  rectMode(CENTER); fill(200,230,255); rect(width/2,height-80,160,40,8);
-  fill(20); text("戻る",width/2,height-80);
+
+  rectMode(CENTER);
+  fill(200,230,255);
+  rect(width/2, height-80, 160, 40, 8);
+  fill(20);
+  text("戻る", width/2, height-80);
 }
 
 function mousePressed(){
-  try{ if(getAudioContext().state!=="running") getAudioContext().resume(); }catch(e){}
-  if(screenState==="instructions"){ screenState="start"; return; }
-  if(screenState==="clear"){ screenState="start"; return; }
+  if(screenState==="instructions"){
+    screenState="start";
+    return;
+  }
+  if(screenState==="clear"){
+    // ボタン判定
+    const bx = width/2 - 120, by = height/2+150;
+    if(mouseX>bx-80 && mouseX<bx+80 && mouseY>by-20 && mouseY<by+20){
+      // リトライ
+      doroRemaining=100;
+      screenState="game";
+      initScene();
+      return;
+    }
+
+    const bx2 = width/2+120, by2=height/2+150;
+    if(mouseX>bx2-80 && mouseX<bx2+80 && mouseY>by2-20 && mouseY<by2+20){
+      screenState="start";
+      return;
+    }
+  }
   if(screenState==="ranking"){
-    const bx=width/2,by=height-80;
-    if(mouseX>bx-80&&mouseX<bx+80&&mouseY>by-20&&mouseY<by+20) screenState="start";
+    const bx=width/2, by=height-80;
+    if(mouseX>bx-80 && mouseX<bx+80 && mouseY>by-20 && mouseY<by+20){
+      screenState="start";
+    }
   }
 }
 
 function drawTable(){
-  noStroke(); fill(145,100,60);
-  quad(tableTopLeftX,tableTopY,tableTopRightX,tableTopY,tableBottomRightX,tableBottomY,tableBottomLeftX,tableBottomY);
+  noStroke();
+  fill(145,100,60);
+  quad(
+    tableTopLeftX,tableTopY,
+    tableTopRightX,tableTopY,
+    tableBottomRightX,tableBottomY,
+    tableBottomLeftX,tableBottomY
+  );
 }
 </script>
 </body>
