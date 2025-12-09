@@ -18,7 +18,6 @@
   #hint { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.4); padding: 8px 12px; font-size: 14px; border-radius: 6px; z-index:100; }
   .p5dom { z-index:200; }
   .btn { background:#3aa; color:#fff; padding:6px 10px; border-radius:6px; cursor:pointer; border:none; }
-  .btn:disabled { opacity:0.5; cursor:default; }
 </style>
 </head>
 <body>
@@ -40,6 +39,7 @@ let longShootSound,reloadSound,isLongSoundPlaying=false;
 let startTime=0,clearTime=0,gameCleared=false;
 let screenState="start";
 let lanes=[],targets=[],bullets=[],targetImg=null;
+
 const BASE_SCORE=10000;
 let missedShots=0,lastScore=0,highScore=0;
 const HIGH_KEY="doro_highscore";
@@ -71,35 +71,33 @@ function setup(){
   nameInput.size(220,24);
   nameInput.addClass("p5dom");
 
-  // ★ 入力するたびに更新（修正版）★
+  // 入力リアルタイム取得（disabled 制御はしない）
   nameInput.input(()=>{
     playerName = nameInput.value().trim();
-    updateStartButtonState();
   });
 
   startButton = createButton("スタート");
   startButton.addClass("btn p5dom");
   startButton.position(width/2+10,height/2-22);
+
+  // ★ 常に押せる。名前が空なら警告を出す方式 ★
   startButton.mousePressed(()=>{
     playerName = nameInput.value().trim();
-    if(playerName.length>0){
-      screenState="game";
-      doroRemaining=100;
-      initScene();
+
+    if(playerName.length === 0){
+      alert("プレイヤー名を入力してください");
+      return;
     }
+
+    screenState="game";
+    doroRemaining=100;
+    initScene();
   });
 
   rankingButton = createButton("ランキング");
   rankingButton.addClass("btn p5dom");
   rankingButton.position(width/2+110,height/2-22);
   rankingButton.mousePressed(()=>{ fetchRanking(); });
-
-  updateStartButtonState();
-}
-
-function updateStartButtonState(){
-  if(!startButton) return;
-  startButton.attribute("disabled", playerName.length>0 ? null : true);
 }
 
 function draw(){
@@ -128,7 +126,6 @@ function drawStartScreen(){
   fill(200); textSize(14);
   text("プレイヤー名を入力してください", 24, 94);
 
-  // local highscore
   fill(255); textSize(14);
   text(`ローカルハイスコア: ${highScore}`,24,height-30);
   pop();
@@ -153,14 +150,12 @@ function drawGame(){
   if(!gameCleared && doroRemaining<=0){
     clearTime=(millis()-startTime)/1000;
 
-    // stop sound
     try{ longShootSound.stop(); }catch(e){}
     isLongSoundPlaying=false;
 
     gameCleared=true;
     computeScoreAndSave();
 
-    // send to firebase
     if(playerName.length>0){
       sendScoreToFirebase({
         name:playerName,
@@ -444,28 +439,31 @@ function drawRankingScreen(){
   text("戻る", width/2, height-80);
 }
 
+function sendScoreToFirebase(payload){
+  return db.ref("scores").push(payload);
+}
+
 function mousePressed(){
   if(screenState==="instructions"){
     screenState="start";
     return;
   }
   if(screenState==="clear"){
-    // ボタン判定
-    const bx = width/2 - 120, by = height/2+150;
-    if(mouseX>bx-80 && mouseX<bx+80 && mouseY>by-20 && mouseY<by+20){
-      // リトライ
+    const rx=width/2-120, ry=height/2+150;
+    if(mouseX>rx-80 && mouseX<rx+80 && mouseY>ry-20 && mouseY<ry+20){
       doroRemaining=100;
       screenState="game";
       initScene();
       return;
     }
 
-    const bx2 = width/2+120, by2=height/2+150;
-    if(mouseX>bx2-80 && mouseX<bx2+80 && mouseY>by2-20 && mouseY<by2+20){
+    const tx=width/2+120, ty=height/2+150;
+    if(mouseX>tx-80 && mouseX<tx+80 && mouseY>ty-20 && mouseY<ty+20){
       screenState="start";
       return;
     }
   }
+
   if(screenState==="ranking"){
     const bx=width/2, by=height-80;
     if(mouseX>bx-80 && mouseX<bx+80 && mouseY>by-20 && mouseY<by+20){
