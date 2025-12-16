@@ -1,0 +1,381 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>荷物仕分けゲーム</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, push, get, query, orderByChild, limitToLast }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const app = initializeApp({
+  databaseURL:"https://doro-e35b4-default-rtdb.firebaseio.com/"
+});
+const db = getDatabase(app);
+window.fb = { db, ref, push, get, query, orderByChild, limitToLast };
+</script>
+
+<style>
+body{
+  margin:0;
+  background:#111;
+  color:#fff;
+  font-family:"Comic Sans MS","Arial Rounded MT Bold","Hiragino Maru Gothic ProN",sans-serif;
+}
+input{
+  width:200px;
+  font-size:18px;
+  padding:6px;
+  border-radius:6px;
+  border:none;
+  text-align:center;
+}
+</style>
+</head>
+
+<body>
+<script>
+/* =====================
+   定数・状態
+===================== */
+const W=360, H=640;
+const PACKAGE_COUNT=6;
+const FEVER_REQUIRE=30;
+const FEVER_TIME=4000;
+
+const SCENE_TITLE=0, SCENE_COUNTDOWN=1, SCENE_GAME=2,
+      SCENE_RESULT=3, SCENE_RANKING=4;
+let scene=SCENE_TITLE;
+
+let nameInput, playerName="";
+let nameError=false;
+
+let packages=[];
+let score=0, combo=0;
+let comboMul=1, baseMul=1;
+let startTime, TIME_LIMIT=30;
+let feverUntil=0, shakeUntil=0;
+let sorting=false, sortDir=0, sortStart=0;
+let countdownStart=0;
+let rankingData=[], myPercent=100;
+
+/* =====================
+   p5 setup / draw
+===================== */
+function setup(){
+  createCanvas(W,H);
+  textAlign(CENTER,CENTER);
+
+  nameInput=createInput("");
+  nameInput.attribute("maxlength",10);
+  nameInput.input(()=>{
+    if(nameInput.value().trim().length>0){
+      nameError=false;
+    }
+  });
+}
+
+function draw(){
+  background(20);
+
+  if(scene===SCENE_GAME){
+    drawGuide();
+  }
+
+  if(scene===SCENE_TITLE) drawTitle();
+  else if(scene===SCENE_COUNTDOWN) drawCountdown();
+  else if(scene===SCENE_GAME) drawGame();
+  else if(scene===SCENE_RESULT) drawResult();
+  else if(scene===SCENE_RANKING) drawRanking();
+}
+
+/* =====================
+   背景ガイド
+===================== */
+function drawGuide(){
+  noStroke();
+  fill(76,175,80,40);
+  rect(0,0,width/2,height);
+  fill(244,67,54,40);
+  rect(width/2,0,width/2,height);
+}
+
+/* =====================
+   UI共通
+===================== */
+function drawButton(x,y,label){
+  rectMode(CENTER);
+  fill(0,180);
+  rect(x,y,200,50,12);
+  fill(255);
+  textSize(20);
+  text(label,x,y);
+}
+function drawIconButton(x,y,label){
+  rectMode(CENTER);
+  fill(0,160);
+  rect(x,y,40,40,8);
+  fill(255);
+  textSize(20);
+  text(label,x,y);
+}
+
+/* =====================
+   タイトル
+===================== */
+function drawTitle(){
+  textSize(34);
+  text("荷物仕分けゲーム",width/2,120);
+
+  textSize(14);
+  text("なまえ（1〜10文字・必須）",width/2,170);
+
+  nameInput.show();
+  nameInput.position(
+    (windowWidth-W)/2 + W/2 - 100,
+    (windowHeight-H)/2 + 190
+  );
+
+  if(nameError){
+    fill(255,80,80);
+    textSize(14);
+    text("名前を入力してください",width/2,240);
+    fill(255);
+  }
+
+  drawButton(width/2,280,"スタート");
+  drawButton(width/2,340,"ランキング");
+}
+
+/* =====================
+   カウントダウン
+===================== */
+function startCountdown(){
+  const v=nameInput.value().trim();
+  if(v.length===0 || v.length>10){
+    nameError=true;
+    return;
+  }
+  nameError=false;
+  playerName=v;
+  countdownStart=millis();
+  scene=SCENE_COUNTDOWN;
+}
+
+function drawCountdown(){
+  const s=floor((millis()-countdownStart)/1000);
+  textSize(64);
+  if(s<3) text(3-s,width/2,height/2);
+  else{
+    startGame();
+    scene=SCENE_GAME;
+  }
+}
+
+/* =====================
+   ゲーム
+===================== */
+function startGame(){
+  packages=[];
+  for(let i=0;i<PACKAGE_COUNT;i++) packages.push(newPackage());
+  score=combo=0;
+  comboMul=1; baseMul=1;
+  startTime=millis();
+  feverUntil=shakeUntil=0;
+  nameInput.hide();
+}
+
+function newPackage(){
+  return{type:random(["正","誤"]),x:width/2,y:-random(80,160)};
+}
+
+function drawGame(){
+  drawGauge();
+  drawPackages();
+  drawHUD();
+  drawGameButtons();
+  drawFever();
+
+  if(getTime()<=0){
+    submitScore();
+    scene=SCENE_RESULT;
+  }
+}
+
+function drawHUD(){
+  textSize(26);
+  text(`スコア ${floor(score)}`,width/2,80);
+  textSize(14);
+  text(`残り ${getTime().toFixed(1)} 秒`,width/2,110);
+  text(`コンボ ${combo}`,width/2,130);
+}
+
+function drawGameButtons(){
+  drawIconButton(28,28,"↻");
+  drawIconButton(28,76,"🏠");
+}
+
+function drawGauge(){
+  stroke(255); noFill();
+  rect(20,12,width-40,20,6);
+  noStroke();
+  let r=millis()<feverUntil
+    ? (feverUntil-millis())/FEVER_TIME
+    : constrain(combo/FEVER_REQUIRE,0,1);
+  fill(255,235,59);
+  rect(20,12,(width-40)*r,20,6);
+}
+
+function drawPackages(){
+  const sy=height/2-140;
+  for(let i=0;i<packages.length;i++){
+    const p=packages[i];
+    p.y=lerp(p.y,sy+i*70,0.2);
+    let x=width/2;
+
+    if(i===packages.length-1 && sorting){
+      const t=(millis()-sortStart)/150;
+      x=sortDir<0?lerp(width/2,40,t):lerp(width/2,width-40,t);
+    }
+    if(millis()<shakeUntil && i===packages.length-1){
+      x+=random(-12,12);
+    }
+    p.x=lerp(p.x,x,0.6);
+
+    fill(p.type==="正"?"#4caf50":"#f44336");
+    rectMode(CENTER);
+    rect(p.x,p.y,120,44,8);
+    fill(255);
+    textSize(18);
+    text(p.type==="正"?"正しい荷物":"間違い荷物",p.x,p.y);
+  }
+
+  if(sorting && millis()-sortStart>150){
+    sorting=false;
+    packages.pop();
+    packages.unshift(newPackage());
+  }
+}
+
+function startSort(ok){
+  if(millis()<shakeUntil) return;
+  const p=packages[packages.length-1];
+  if((p.type==="正")===ok){
+    combo++;
+    comboMul*=1.1;
+    if(combo%FEVER_REQUIRE===0){
+      baseMul*=2;
+      TIME_LIMIT+=0.1;
+      feverUntil=millis()+FEVER_TIME;
+    }
+    score+=comboMul*baseMul;
+    sorting=true;
+    sortDir=ok?-1:1;
+    sortStart=millis();
+  }else{
+    combo=0;
+    comboMul=1;
+    shakeUntil=millis()+200;
+  }
+}
+
+function drawFever(){
+  if(millis()<feverUntil){
+    fill(255,235,59,map(sin(millis()*0.02),-1,1,40,120));
+    rect(0,0,width,height);
+  }
+}
+
+function getTime(){
+  return TIME_LIMIT-(millis()-startTime)/1000;
+}
+
+/* =====================
+   リザルト
+===================== */
+function drawResult(){
+  textSize(32);
+  text("結果",width/2,220);
+  textSize(20);
+  text(`スコア ${floor(score)}`,width/2,260);
+  text(`上位 ${myPercent}%`,width/2,300);
+  textSize(14);
+  text("タップでタイトルへ",width/2,340);
+}
+
+/* =====================
+   ランキング
+===================== */
+async function submitScore(){
+  const {db,ref,push,get,query,orderByChild,limitToLast}=window.fb;
+  const r=ref(db,"sewake/score");
+
+  const top=await get(query(r,orderByChild("score"),limitToLast(30)));
+  let count=0, in30=false;
+  top.forEach(v=>{
+    count++;
+    if(score>v.val().score) in30=true;
+  });
+  if(count<30) in30=true;
+
+  await push(r, in30?{name:playerName,score}:{score});
+
+  const all=await get(r);
+  let total=0,higher=0;
+  all.forEach(v=>{
+    total++;
+    if(v.val().score>score) higher++;
+  });
+  myPercent=Math.ceil(((higher+1)/total)*100);
+}
+
+async function loadRanking(){
+  rankingData=[];
+  const {db,ref,get,query,orderByChild,limitToLast}=window.fb;
+  const s=await get(query(ref(db,"sewake/score"),orderByChild("score"),limitToLast(30)));
+  s.forEach(v=>rankingData.push(v.val()));
+  rankingData.reverse();
+}
+
+function drawRanking(){
+  textSize(26);
+  text("ランキング（上位30）",width/2,60);
+  textSize(16);
+  rankingData.forEach((r,i)=>{
+    text(`${i+1}. ${r.name??"---"}  ${floor(r.score)}`,width/2,100+i*22);
+  });
+  drawButton(width/2,580,"戻る");
+}
+
+/* =====================
+   入力
+===================== */
+function mousePressed(){
+  if(scene===SCENE_TITLE){
+    if(abs(mouseY-280)<25) startCountdown();
+    else if(abs(mouseY-340)<25){
+      loadRanking();
+      scene=SCENE_RANKING;
+      nameInput.hide();
+    }
+  }else if(scene===SCENE_GAME){
+    if(mouseX<50 && mouseY<50) startCountdown();
+    else if(mouseX<50 && mouseY<100){
+      scene=SCENE_TITLE;
+      nameInput.show();
+    }
+    else if(mouseX<width/2) startSort(true);
+    else startSort(false);
+  }else{
+    scene=SCENE_TITLE;
+    nameInput.show();
+  }
+}
+</script>
+</body>
+</html>
